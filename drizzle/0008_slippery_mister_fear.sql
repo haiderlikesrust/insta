@@ -1,0 +1,1 @@
+ALTER TABLE `settlements` ADD `last_attempt_at` integer DEFAULT 0 NOT NULL;

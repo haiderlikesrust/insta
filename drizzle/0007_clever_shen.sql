@@ -1,0 +1,2 @@
+DROP INDEX `one_active_config`;--> statement-breakpoint
+CREATE UNIQUE INDEX `one_active_config` ON `intents` (`kind`) WHERE kind IN ('main_config','main_lookup') AND status IN ('prepared','submitted');

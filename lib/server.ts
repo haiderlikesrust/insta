@@ -1,6 +1,11 @@
 import { env } from "cloudflare:workers";
 import { AppError, hash } from "./domain";
-export const config = () => env as unknown as Record<string, string | undefined>;
+let savedConfiguration:Record<string,string>={};
+export const config = () => new Proxy({} as Record<string,string|undefined>,{get(_target,key){return typeof key==='string' ? (env as unknown as Record<string,string|undefined>)[key]||savedConfiguration[key] : undefined;}});
+export async function loadConfiguration(){
+ const records=await db().prepare("SELECT key,value FROM deployment_settings WHERE key IN ('METEORA_CONFIG_KEY','INSTARA_MINT','SOLANA_LOOKUP_TABLES')").all<{key:string;value:string}>();
+ savedConfiguration=Object.fromEntries(records.results.map(r=>[r.key,r.value]));
+}
 export function db() { if (!env.DB) throw new AppError("Storage is unavailable. Please try again later.", 503); return env.DB; }
 export type Session = { token_hash: string; wallet: string; creator_id: string | null; verified_at: number | null; expires_at: number };
 export async function session(req: Request, required = true) { const token = /(?:^|;\s*)instara_session=([^;]+)/.exec(req.headers.get("cookie") || "")?.[1]; const s = token ? await db().prepare("SELECT * FROM sessions WHERE token_hash = ? AND expires_at > ?").bind(await hash(token), Date.now()).first<Session>() : null; if (!s && required) throw new AppError("Connect your wallet first.", 401); return s; }
@@ -15,4 +20,14 @@ export function clientIp(req: Request) {
   return Number.isInteger(hops)&&hops>0&&chain.length>=hops ? chain[chain.length-hops] : 'local';
 }
 export async function rateLimit(key: string, max = 20) { const bucket = Math.floor(Date.now() / 60000); const result = await db().prepare("INSERT INTO rate_limits (key, count, expires_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = rate_limits.count + 1 RETURNING count").bind(`${key}:${bucket}`, (bucket + 2) * 60000).first<{ count: number }>(); if (!result || result.count > max) throw new AppError("Too many requests. Try again in a minute.", 429); }
-export function readiness(main = false) { const e = config(); const blockers: string[] = []; const instagram = !!(e.APIFY_API_TOKEN && e.APP_ORIGIN); if (!main && !instagram) blockers.push("Configure the Instagram profile reader."); if (!e.METEORA_CONFIG_KEY) blockers.push("Create and verify the Meteora 2% curve configuration."); if (!e.SOLANA_RPC_URL) blockers.push("Configure a Solana RPC endpoint."); if (!main && (!e.ESCROW_PROGRAM_ID || !e.VERIFIER_SECRET_KEY || !e.VERIFIER_PUBLIC_KEY)) blockers.push("Deploy the escrow and configure its verification authority."); if ((!main && (e.LIVE_LAUNCHES_ENABLED !== "true" || e.ESCROW_REVIEWED !== "true")) || (main && e.MAIN_LAUNCH_ENABLED !== "true")) blockers.push("Complete escrow review and integration testing before enabling funds."); if (!main && !e.INSTARA_MINT) blockers.push("Configure the INSTARA buyback mint."); return { live: !blockers.length, instagram, blockers, network: e.SOLANA_NETWORK === "mainnet-beta" ? "Solana mainnet" : "Network not enabled" }; }
+export function readiness(main=false){
+ const e=config(),blockers:string[]=[],instagram=!!(e.APIFY_API_TOKEN&&e.APP_ORIGIN);
+ if(!main&&!instagram)blockers.push('Configure the Instagram profile reader.');
+ if(!e.METEORA_CONFIG_KEY)blockers.push('Create the launch configuration in /admin.');
+ if(!e.SOLANA_RPC_URL)blockers.push('Configure a Solana RPC endpoint.');
+ if(!main&&!e.BACKEND_WALLET_SECRET_KEY)blockers.push('Configure the backend fee wallet.');
+ if((main?e.MAIN_LAUNCH_ENABLED:e.LIVE_LAUNCHES_ENABLED)!=='true')blockers.push('Live transactions are not enabled.');
+ if(!main&&!e.SOLANA_LOOKUP_TABLES)blockers.push('Prepare creator claims in /admin.');
+ if(!main&&!e.INSTARA_MINT)blockers.push('Launch the INSTARA main token first.');
+ return {live:!blockers.length,instagram,blockers,network:e.SOLANA_NETWORK==='mainnet-beta'?'Solana mainnet':'Network not enabled'};
+}

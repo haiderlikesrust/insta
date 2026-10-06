@@ -3,7 +3,7 @@ import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { DynamicBondingCurveClient } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { buildInstaraCurve } from "../lib/curve";
-import { NATIVE_MINT } from "../lib/escrow";
+import { NATIVE_MINT } from "../lib/solana";
 const rpc = process.env.SOLANA_RPC_URL, payerAddress = process.env.CONFIG_PAYER_PUBLIC_KEY;
 if (!rpc || !payerAddress) throw new Error("Set SOLANA_RPC_URL and CONFIG_PAYER_PUBLIC_KEY (public key only).");
 const connection = new Connection(rpc,"confirmed"), client = new DynamicBondingCurveClient(connection,"confirmed"), payer = new PublicKey(payerAddress), config = Keypair.generate();

@@ -4,7 +4,7 @@ import {DynamicBondingCurveClient, DYNAMIC_BONDING_CURVE_PROGRAM_ID as DBC, deri
 import {CpAmm, CP_AMM_PROGRAM_ID as DAMM, derivePoolAuthority} from '@meteora-ag/cp-amm-sdk';
 import BN from 'bn.js';
 import {AppError} from './domain';
-import {NATIVE_MINT,TOKEN_PROGRAM,discriminator} from './escrow';
+import {NATIVE_MINT,TOKEN_PROGRAM,discriminator} from './solana';
 export function splitClaim(gross:bigint){
  if(gross<BigInt(10000) || gross>BigInt("18446744073709551615"))throw new AppError('Too few fees to claim. Let more fees accumulate.');
  const buyback=gross/BigInt(10);return {gross,buyback,creator:gross-buyback};

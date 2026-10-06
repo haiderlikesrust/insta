@@ -40,15 +40,12 @@ services:
       INSTARA_BUYBACK_POOL: ${INSTARA_BUYBACK_POOL:-}
       BUYBACK_SLIPPAGE_BPS: ${BUYBACK_SLIPPAGE_BPS:-100}
       SOLANA_LOOKUP_TABLES: ${SOLANA_LOOKUP_TABLES:-}
+      BACKEND_WALLET_SECRET_KEY: ${BACKEND_WALLET_SECRET_KEY:-}
       APIFY_API_TOKEN: ${APIFY_API_TOKEN:-}
       SOLANA_NETWORK: mainnet-beta
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-}
       METEORA_CONFIG_KEY: ${METEORA_CONFIG_KEY:-}
-      ESCROW_PROGRAM_ID: ${ESCROW_PROGRAM_ID:-}
-      VERIFIER_PUBLIC_KEY: ${VERIFIER_PUBLIC_KEY:-}
-      VERIFIER_SECRET_KEY: ${VERIFIER_SECRET_KEY:-}
       LIVE_LAUNCHES_ENABLED: ${LIVE_LAUNCHES_ENABLED:-false}
-      ESCROW_REVIEWED: ${ESCROW_REVIEWED:-false}
     networks:
       - app
       - database
@@ -58,6 +55,22 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 3
+
+  settlement-worker:
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    init: true
+    command: ["node", "settlement-worker.mjs"]
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      BACKEND_WALLET_SECRET_KEY: ${BACKEND_WALLET_SECRET_KEY:-}
+      SETTLEMENT_ORIGIN: http://web:3000
+    networks:
+      - app
 
   postgres:
     image: postgres:17-alpine

@@ -13,6 +13,7 @@ WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
 COPY --from=web-build --chown=node:node /app/dist/standalone/ ./
 COPY --chown=node:node drizzle ./drizzle
+COPY --chown=node:node scripts/settlement-worker.mjs ./settlement-worker.mjs
 USER node
 EXPOSE 3000
 CMD ["node", "server.js"]

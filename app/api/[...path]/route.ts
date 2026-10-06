@@ -1,14 +1,20 @@
 import { z } from "zod";
 import { PublicKey } from "@solana/web3.js";
 import { AppError, assertRecipient, assertClaim, draftSchema, hash, verifyWallet } from "@/lib/domain";
-import { db, session, origin, csrf, json, body, cookie, rateLimit, readiness, config, clientIp } from "@/lib/server";
+import { db, session, origin, csrf, json, body, cookie, rateLimit, readiness, config, clientIp, loadConfiguration } from "@/lib/server";
 import { startBio, checkBio, bioStatus } from "@/lib/bio";
 import { startRecipient, recipientStatus } from "@/lib/recipient";
 import type { TokenRecord } from "@/lib/chain";
 export const dynamic = "force-dynamic";
 const pathOf = (r: Request) => new URL(r.url).pathname.replace(/^\/api\//, "");
 async function handler(req: Request) {
+  await loadConfiguration();
   const path = pathOf(req), now = Date.now();
+  if(path==='internal/settle'&&req.method==='POST'){
+    const {validWorkerAuthorization}=await import('@/lib/custody');
+    if(!validWorkerAuthorization(config().BACKEND_WALLET_SECRET_KEY,req.headers.get('x-instara-worker')))throw new AppError('Unauthorized.',401);
+    return json(await (await import('@/lib/custodial-claims')).settlePending());
+  }
   if (path === 'health' && req.method === 'GET') { await db().prepare('SELECT 1').first(); return json({ok:true,database:config().DATABASE_URL?'postgres':'d1',liveLaunches:readiness().live}); }
   if (req.method === "POST") { csrf(req); await rateLimit(`ip:${clientIp(req)}`, 60); }
   if (path === "state" && req.method === "GET") {
@@ -43,6 +49,10 @@ async function handler(req: Request) {
     if(path==='admin/state'&&req.method==='GET')return json(await main.mainState(s));
     if(path==='admin/prepare'&&req.method==='POST')return json(await main.prepareMain(s,await body(req)));
     if(path==='admin/claim'&&req.method==='POST')return json(await main.claimMain(s));
+    if(path==='admin/lookup/prepare'&&req.method==='POST')return json(await main.prepareLookup(s));
+    if(path==='admin/lookup/recover'&&req.method==='POST')return json(await main.recoverConfiguration(s,true));
+    if(path==='admin/config/prepare'&&req.method==='POST')return json(await main.prepareConfiguration(s));
+    if(path==='admin/config/recover'&&req.method==='POST')return json(await main.recoverConfiguration(s));
     throw new AppError('Not found.',404);
   }
   if (path === "recipient/start" && req.method === "POST") return json(await startRecipient(s, await body(req)));
@@ -65,7 +75,7 @@ async function handler(req: Request) {
     if (path === "launch/submit") return json(await chain.submit(s, b));
     if (path === "launch/confirm") return json(await chain.confirm(s, b));
     if (path === "launch/recover") return json(await chain.recover(s, b));
-    if (!readiness().live) throw new AppError("Live transactions are disabled until all integrations and escrow review are complete.", 503);
+    if (!readiness().live) throw new AppError("Live transactions are disabled until the required integrations are configured.", 503);
     const { id } = z.object({ id: z.string().uuid() }).parse(b);
     const token = await db().prepare("SELECT * FROM tokens WHERE id = ?").bind(id).first<TokenRecord>(); if (!token) throw new AppError("Coin not found.", 404);
     if(token.recipient_type==='dev')throw new AppError('Use the main-token launcher for this token.',403);
