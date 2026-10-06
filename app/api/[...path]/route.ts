@@ -24,7 +24,8 @@ async function handler(req: Request) {
     const drafts = s ? await db().prepare("SELECT * FROM tokens WHERE wallet = ? AND recipient_type='instagram' AND status IN ('draft','pending') ORDER BY created_at DESC LIMIT 100").bind(s.wallet).all() : { results: [] };
     const pending = s ? await db().prepare('SELECT id AS "intentId", signature FROM intents WHERE wallet=? AND kind IN (\'launch\',\'claim\') AND status=\'submitted\' ORDER BY created_at DESC LIMIT 1').bind(s.wallet).first() : null;
     const identity = s?.creator_id ? await db().prepare("SELECT id, username, followers, biography, picture FROM creators WHERE id = ?").bind(s.creator_id).first() : null;
-    return json({ status: readiness(), creators: creators.results, tokens: tokens.results, drafts: drafts.results, wallet: s?.wallet, identity, pending });
+    let officialMint:string|null=null;try{if(config().INSTARA_MINT)officialMint=new PublicKey(config().INSTARA_MINT!).toBase58();}catch{}
+    return json({ officialMint, status: readiness(), creators: creators.results, tokens: tokens.results, drafts: drafts.results, wallet: s?.wallet, identity, pending });
   }
   if (path === "wallet/challenge" && req.method === "POST") {
     const { wallet } = z.object({ wallet: z.string().min(32).max(44) }).parse(await body(req)); new PublicKey(wallet); await rateLimit(`challenge:${wallet}`, 5);

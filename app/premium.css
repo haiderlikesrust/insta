@@ -166,3 +166,13 @@ footer { max-width: 1200px; margin: auto; background: transparent; border-color:
   .form-actions { flex-direction: column; }.form-actions button { width: 100%; }.admin-lock .form-actions { gap: 9px; }
 }
 @media (prefers-reduced-motion:reduce) { button,a { transition: none; }.primary-button:hover:not(:disabled) { transform:none; } }
+
+footer { flex-wrap: wrap; gap: 18px; }
+.footer-links { display:flex; align-items:center; gap:22px; }
+.footer-links a { display:inline-flex; gap:6px; align-items:center; color:var(--ink); font-weight:600; }
+.official-contract { flex-basis:100%; display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:10px; padding-top:17px; border-top:1px solid #e8e1ed; }
+.official-contract>span { display:inline-flex; align-items:center; gap:6px; color:#7046dc; font-size:11px; font-weight:700; }
+.official-contract>a { display:inline-flex; align-items:center; gap:7px; max-width:100%; color:#514661; }
+.official-contract code { overflow-wrap:anywhere; font-size:11px; }
+.official-contract>button { padding:7px; border-radius:8px; background:#eee7f7; color:#7046dc; }
+@media(max-width:600px) { .official-contract { justify-content:flex-start; }.official-contract>a { max-width:calc(100% - 42px); }.official-contract code { font-size:10px; } }

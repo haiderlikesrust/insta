@@ -60,7 +60,11 @@ export default defineConfig(async ({ command }) => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
-    resolve: { alias: [{ find: /^@coral-xyz\/anchor$/, replacement: fileURLToPath(new URL("./node_modules/@coral-xyz/anchor/dist/cjs/index.js", import.meta.url)) }] },
+    resolve: { alias: [
+      { find: /^@coral-xyz\/anchor$/, replacement: fileURLToPath(new URL("./node_modules/@coral-xyz/anchor/dist/cjs/index.js", import.meta.url)) },
+      // Workers cannot load native addons. Avoid bindings mutating Error.prepareStackTrace.
+      { find: /^bigint-buffer$/, replacement: fileURLToPath(new URL("./node_modules/bigint-buffer/dist/browser.js", import.meta.url)) },
+    ] },
     server: {
       ...(managedLinux
         ? { host: "0.0.0.0", allowedHosts: ["terminal.local"] }

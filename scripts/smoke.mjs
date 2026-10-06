@@ -39,3 +39,7 @@ if(process.env.RUN_ADMIN_SMOKE==='true'){
  console.log('PASS: admin HTTP lock rejects other wallets and accepts only the signed allowlisted wallet; mainnet launch stays disabled.');
 }
 console.log('PASS: local HTTP persistence, CSRF, signed wallet authentication, replay rejection, live gate, price API, logout.');
+
+// Exercise HTML rendering after server-only crypto modules have been loaded.
+for(const path of ['/','/admin']){const response=await fetch(base+path);assert.equal(response.status,200);const html=await response.text();assert.ok(html.length>1000,'HTML must not be empty');assert.match(html,/Instara/);if(path==='/')assert.match(html,/https:\/\/x.com\/instaraxyz/);}
+console.log('PASS: pages still render after backend modules load.');
