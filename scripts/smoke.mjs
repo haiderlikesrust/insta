@@ -4,10 +4,12 @@ import nacl from 'tweetnacl';
 const base=process.argv[2]||'http://127.0.0.1:8787';
 if(!['127.0.0.1','localhost'].includes(new URL(base).hostname))throw new Error('Smoke writes are local-only.');
 let cookie='';
-async function call(path,body,origin=base){const r=await fetch(base+'/api/'+path,{method:body===undefined?'GET':'POST',headers:{Connection:"close",Origin:origin,Cookie:cookie,...(body===undefined?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body)});const text=await r.text();let data;try{data=JSON.parse(text);}catch{data={error:text.slice(0,300)};}return{status:r.status,data,cookie:r.headers.get('set-cookie')};}
+async function call(path,body,origin=base,retried=false){const r=await fetch(base+'/api/'+path,{method:body===undefined?'GET':'POST',headers:{Origin:origin,Cookie:cookie,...(body===undefined?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body)});const text=await r.text();let data;try{data=JSON.parse(text);}catch{data={error:text.slice(0,300)};}if(!retried && r.status===503 && data.error?.startsWith('Your worker restarted mid-request')){await new Promise(r=>setTimeout(r,300));return call(path,body,origin,true);}return{status:r.status,data,cookie:r.headers.get('set-cookie')};}
 const state=await call('state');assert.equal(state.status,200);assert.equal(state.data.status.live,false);
 const k=Keypair.generate();assert.equal((await call('wallet/challenge',{wallet:k.publicKey.toBase58()},'https://attacker.example')).status,403);
-const challenge=await call('wallet/challenge',{wallet:k.publicKey.toBase58()});assert.equal(challenge.status,200,JSON.stringify(challenge.data));
+// The helper retries only Wrangler's explicit local proxy restart response.
+const challenge=await call('wallet/challenge',{wallet:k.publicKey.toBase58()});
+assert.equal(challenge.status,200,JSON.stringify(challenge.data));
 const signature=Array.from(nacl.sign.detached(new TextEncoder().encode(challenge.data.message),k.secretKey));
 const auth=await call('wallet/verify',{id:challenge.data.id,signature});assert.equal(auth.status,200);assert.match(auth.cookie,/HttpOnly/);cookie=auth.cookie.split(';')[0];
 assert.equal((await call('wallet/verify',{id:challenge.data.id,signature})).status,401);
