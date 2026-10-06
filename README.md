@@ -59,3 +59,5 @@ Both launch forms accept image uploads and optional website, X, Telegram and USD
 - [GMGN chart embed](https://docs.gmgn.ai/index/cooperation-api-integrate-gmgn-price-chart)
 
 Instara is independent of Instagram, Meta, Meteora and GMGN. Verification is not endorsement of a community coin.
+
+Community coins can launch as soon as the Meteora configuration, RPC, Instagram reader, backend custody key and LIVE_LAUNCHES_ENABLED are configured. The INSTARA main token and claim lookup table are not launch prerequisites. Fees accrue under each coin’s separate custody authority; new creator payouts remain unavailable until both buyback prerequisites are configured. Claims then use the existing 90% creator / 10% buy-and-burn flow.

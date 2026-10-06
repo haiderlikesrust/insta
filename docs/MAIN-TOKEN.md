@@ -35,3 +35,5 @@ The 10% is swap input, including the pool's swap fee. Slippage changes tokens re
 ## Before public funds
 
 Automated tests cover authorization, rounding, key isolation, SQL uniqueness, worker authentication, payout instructions, concurrent workers, timeout retries, expiry and replay. They use mocked RPC responses and do not replace live DBC/DAMM tests. Validate real profile freshness, graduation, liquidity, lookup-table sizing, funded fee accounts, RPC history, process restarts and recovery before public launches.
+
+Community coins can launch as soon as the Meteora configuration, RPC, Instagram reader, backend custody key and LIVE_LAUNCHES_ENABLED are configured. The INSTARA main token and claim lookup table are not launch prerequisites. Fees accrue under each coin’s separate custody authority; new creator payouts remain unavailable until both buyback prerequisites are configured. Claims then use the existing 90% creator / 10% buy-and-burn flow.

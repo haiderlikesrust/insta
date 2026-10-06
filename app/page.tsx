@@ -11,7 +11,7 @@ import { Camera as Instagram, Wallet, LockKeyhole, Rocket, Compass, CircleHelp, 
 
 type Creator = { id: string; username: string; followers?: number | null; biography?: string | null; picture?: string | null; claimed_at?: number | null };
 type Token = { created_at:number; launched_at?:number|null; website:string;twitter:string;telegram:string;dev_buy_usd:string; recipient_type?:string; id: string; name: string; symbol: string; description: string; handle: string; creator_id: string | null; image: string; metadata_uri: string; status: string; mint: string | null; claimed_at?: number | null };
-type Status = { live: boolean; instagram: boolean };
+type Status = { live: boolean; claimsLive: boolean; instagram: boolean };
 type Provider = { connect(): Promise<{ publicKey: { toString(): string } }>; disconnect(): Promise<void>; signMessage(message: Uint8Array, encoding?: string): Promise<{ signature: Uint8Array }>; signTransaction(transaction: any): Promise<any> };
 declare global { interface Window { phantom?: { solana?: Provider }; solflare?: Provider } }
 async function api(path: string, body?: unknown) {
@@ -24,7 +24,7 @@ export default function Home() {
   const [uploading,setUploading]=useState(false),[sort,setSort]=useState<CoinSort>("newest"),[volumes,setVolumes]=useState<Record<string,number|null>>({}),[volumeNote,setVolumeNote]=useState("");
   const [officialMint,setOfficialMint]=useState<string|null>(null);
   const [modal, setModal] = useState(false), [busy, setBusy] = useState(""), [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
-  const [status, setStatus] = useState<Status>({ live: false, instagram: false });
+  const [status, setStatus] = useState<Status>({ live: false, claimsLive: false, instagram: false });
   const [creators, setCreators] = useState<Creator[]>([]), [tokens, setTokens] = useState<Token[]>([]), [drafts, setDrafts] = useState<Token[]>([]), [identity, setIdentity] = useState<Creator | null>(null);
   const [chart, setChart] = useState<Token | null>(null);
   const [query, setQuery] = useState(""), [draftId, setDraftId] = useState(""), [consent, setConsent] = useState(false);
@@ -44,7 +44,7 @@ export default function Home() {
   async function saveDraft() { if (!wallet) return setModal(true); setBusy("save"); try { const d = await api("drafts", { ...form, id: draftId || undefined }); setDraftId(d.id); await refresh(); setNotice({ text: "Draft saved. No token has been created yet." }); } catch (e) { fail(e); } finally { setBusy(""); } }
   async function confirm(value = pending) { if (!value) return; setBusy("confirm"); try { const d = await api("launch/confirm", value); setPending(null); await refresh(); setTab(d.kind === "claim" ? "claim" : "explore"); setNotice({ text: d.kind === "claim" ? "Claim confirmed on Solana." : "Launch confirmed on Solana. Your coin is now listed." }); } catch (e) { fail(e); } finally { setBusy(""); } }
   async function transact(kind: "launch" | "claim", id?: string) {
-    if (!status.live) return setNotice({ text: kind === "launch" ? "Launching is currently unavailable. You can save your coin as a draft." : "Fee claims are currently unavailable. Please try again later.", error: true });
+    if (!(kind === "launch" ? status.live : status.claimsLive)) return setNotice({ text: kind === "launch" ? "Launching is currently unavailable. You can save your coin as a draft." : "Creator payouts are awaiting the INSTARA buyback setup. Your fees continue to accumulate for your account.", error: true });
     if (!wallet || (kind === "launch" && !provider)) return setModal(true); setBusy(kind);
     try { let target = id; if (kind === "launch") { const draft = await api("drafts", { ...form, id: draftId || undefined }); setDraftId(draft.id); target = draft.id; }
       const p = await api(`${kind}/prepare`, { id: target });

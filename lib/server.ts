@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { AppError, hash } from "./domain";
+import {deploymentReadiness} from './readiness';
 let savedConfiguration:Record<string,string>={};
 export const config = () => new Proxy({} as Record<string,string|undefined>,{get(_target,key){return typeof key==='string' ? (env as unknown as Record<string,string|undefined>)[key]||savedConfiguration[key] : undefined;}});
 export async function loadConfiguration(){
@@ -21,13 +22,5 @@ export function clientIp(req: Request) {
 }
 export async function rateLimit(key: string, max = 20) { const bucket = Math.floor(Date.now() / 60000); const result = await db().prepare("INSERT INTO rate_limits (key, count, expires_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = rate_limits.count + 1 RETURNING count").bind(`${key}:${bucket}`, (bucket + 2) * 60000).first<{ count: number }>(); if (!result || result.count > max) throw new AppError("Too many requests. Try again in a minute.", 429); }
 export function readiness(main=false){
- const e=config(),blockers:string[]=[],instagram=!!(e.APIFY_API_TOKEN&&e.APP_ORIGIN);
- if(!main&&!instagram)blockers.push('Configure the Instagram profile reader.');
- if(!e.METEORA_CONFIG_KEY)blockers.push('Create the launch configuration in /admin.');
- if(!e.SOLANA_RPC_URL)blockers.push('Configure a Solana RPC endpoint.');
- if(!main&&!e.BACKEND_WALLET_SECRET_KEY)blockers.push('Configure the backend fee wallet.');
- if((main?e.MAIN_LAUNCH_ENABLED:e.LIVE_LAUNCHES_ENABLED)!=='true')blockers.push('Live transactions are not enabled.');
- if(!main&&!e.SOLANA_LOOKUP_TABLES)blockers.push('Prepare creator claims in /admin.');
- if(!main&&!e.INSTARA_MINT)blockers.push('Launch the INSTARA main token first.');
- return {live:!blockers.length,instagram,blockers,network:e.SOLANA_NETWORK==='mainnet-beta'?'Solana mainnet':'Network not enabled'};
+ return deploymentReadiness(config(),main);
 }

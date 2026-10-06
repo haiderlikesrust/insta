@@ -4,7 +4,7 @@ import {DYNAMIC_BONDING_CURVE_PROGRAM_ID as DBC,deriveDbcPoolAddress,deriveDbcPo
 import {CpAmm,CP_AMM_PROGRAM_ID as DAMM,derivePoolAuthority} from '@meteora-ag/cp-amm-sdk';
 import bs58 from 'bs58';
 import {AppError,assertClaim,hash} from './domain';
-import {config,db,type Session} from './server';
+import {config,db,readiness,type Session} from './server';
 import {poolRuntime,setupRuntime,type TokenRecord} from './chain';
 import {backendWallet,feeWallet} from './custody';
 import {NATIVE_MINT,TOKEN_PROGRAM,discriminator} from './solana';
@@ -21,6 +21,7 @@ export async function prepareClaim(s:Session,token:TokenRecord){
  if(token.recipient_type==='dev'||token.status!=='launched'||!token.mint)throw new AppError('This token cannot use creator payouts.',403);
  const active=await db().prepare("SELECT id,wallet,signature FROM intents WHERE token_id=? AND kind='claim' AND status IN ('prepared','submitted')").bind(token.id).first<{id:string;wallet:string;signature:string}>();
  if(active){if(active.wallet!==s.wallet)throw new AppError('A payout to the previously verified wallet is still settling.',409);return {intentId:active.id,signature:active.signature};}
+ if(!readiness().claimsLive)throw new AppError('Creator payouts are awaiting the INSTARA buyback setup. Your fees continue to accumulate for your account.',503);
  const {connection,client,configKey}=await poolRuntime(),master=backendWallet(config().BACKEND_WALLET_SECRET_KEY),mint=new PublicKey(token.mint),authority=feeWallet(master,mint),vault=authority.publicKey,payer=master.publicKey;
  if(token.vault!==vault.toBase58())throw new AppError('The configured backend key does not control this token’s fee wallet.',503);
  const poolKey=deriveDbcPoolAddress(NATIVE_MINT,mint,configKey),pool=await client.state.getPool(poolKey);
