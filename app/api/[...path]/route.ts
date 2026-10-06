@@ -15,8 +15,8 @@ async function handler(req: Request) {
     const s = await session(req, false);
     const creators = await db().prepare("SELECT id, username, followers, biography, picture, claimed_at FROM creators WHERE profile_at > ? ORDER BY username LIMIT 200").bind(now-900000).all();
     const tokens = await db().prepare("SELECT tokens.*, creators.claimed_at FROM tokens LEFT JOIN creators ON creators.id=tokens.creator_id WHERE tokens.status='launched' ORDER BY tokens.created_at DESC LIMIT 100").all();
-    const drafts = s ? await db().prepare("SELECT * FROM tokens WHERE wallet = ? AND status IN ('draft','pending') ORDER BY created_at DESC LIMIT 100").bind(s.wallet).all() : { results: [] };
-    const pending = s ? await db().prepare('SELECT id AS "intentId", signature FROM intents WHERE wallet=? AND status=\'submitted\' ORDER BY created_at DESC LIMIT 1').bind(s.wallet).first() : null;
+    const drafts = s ? await db().prepare("SELECT * FROM tokens WHERE wallet = ? AND recipient_type='instagram' AND status IN ('draft','pending') ORDER BY created_at DESC LIMIT 100").bind(s.wallet).all() : { results: [] };
+    const pending = s ? await db().prepare('SELECT id AS "intentId", signature FROM intents WHERE wallet=? AND kind IN (\'launch\',\'claim\') AND status=\'submitted\' ORDER BY created_at DESC LIMIT 1').bind(s.wallet).first() : null;
     const identity = s?.creator_id ? await db().prepare("SELECT id, username, followers, biography, picture FROM creators WHERE id = ?").bind(s.creator_id).first() : null;
     return json({ status: readiness(), creators: creators.results, tokens: tokens.results, drafts: drafts.results, wallet: s?.wallet, identity, pending });
   }
@@ -37,6 +37,14 @@ async function handler(req: Request) {
   if (path === "wallet/logout" && req.method === "POST") { const s = await session(req, false); if (s) await db().prepare("DELETE FROM sessions WHERE token_hash = ?").bind(s.token_hash).run(); return json({ ok: true }, 200, { "Set-Cookie": cookie(req, "", 0) }); }
   if (path.startsWith("market/") && req.method === "GET") { const id = z.string().uuid().parse(path.split('/')[1]); const token = await db().prepare("SELECT * FROM tokens WHERE id=? AND status='launched'").bind(id).first<TokenRecord>(); if (!token) throw new AppError("Coin not found.",404); const {market}=await import('@/lib/chain'); return json({market:await market(token)}); }
   const s = (await session(req))!;
+  if (path.startsWith('admin/')) {
+    const {assertDev}=await import('@/lib/admin-auth');assertDev(s,config().DEV_WALLET_ADDRESS);
+    const main=await import('@/lib/main-token');
+    if(path==='admin/state'&&req.method==='GET')return json(await main.mainState(s));
+    if(path==='admin/prepare'&&req.method==='POST')return json(await main.prepareMain(s,await body(req)));
+    if(path==='admin/claim'&&req.method==='POST')return json(await main.claimMain(s));
+    throw new AppError('Not found.',404);
+  }
   if (path === "recipient/start" && req.method === "POST") return json(await startRecipient(s, await body(req)));
   if (path === "recipient/status" && req.method === "POST") return json(await recipientStatus(s, await body(req)));
   if (path === "bio/start" && req.method === "POST") return json(await startBio(s, await body(req)));
@@ -44,8 +52,8 @@ async function handler(req: Request) {
   if (path === "bio/status" && req.method === "POST") return json(await bioStatus(s));
   if (path === "drafts" && req.method === "POST") {
     const b = draftSchema.parse(await body(req)); const id = b.id || crypto.randomUUID();
-    const old = b.id ? await db().prepare("SELECT * FROM tokens WHERE id = ? AND wallet = ?").bind(id, s.wallet).first<{ status: string; creator_id: string | null; handle: string }>() : null;
-    if (b.id && (!old || old.status !== "draft")) throw new AppError("This draft cannot be edited.", 409);
+    const old = b.id ? await db().prepare("SELECT * FROM tokens WHERE id = ? AND wallet = ?").bind(id, s.wallet).first<{ recipient_type:string; status: string; creator_id: string | null; handle: string }>() : null;
+    if (b.id && (!old || old.status !== "draft" || (old as {recipient_type?:string}).recipient_type === 'dev')) throw new AppError("This draft cannot be edited.", 409);
     const c = await db().prepare("SELECT id FROM creators WHERE username = ?").bind(b.handle).first<{ id: string }>();
     if (old?.creator_id && old.handle === b.handle && c?.id && old.creator_id !== c.id) throw new AppError("This handle has changed owners. Create a new draft after verifying the intended account.", 409);
     if (old) await db().prepare("UPDATE tokens SET name=?,symbol=?,description=?,handle=?,creator_id=?,image=?,metadata_uri=? WHERE id=? AND wallet=? AND status='draft'").bind(b.name,b.symbol,b.description,b.handle,old.handle === b.handle ? old.creator_id || c?.id || null : c?.id || null,b.image,b.metadataUri,id,s.wallet).run();
@@ -60,6 +68,7 @@ async function handler(req: Request) {
     if (!readiness().live) throw new AppError("Live transactions are disabled until all integrations and escrow review are complete.", 503);
     const { id } = z.object({ id: z.string().uuid() }).parse(b);
     const token = await db().prepare("SELECT * FROM tokens WHERE id = ?").bind(id).first<TokenRecord>(); if (!token) throw new AppError("Coin not found.", 404);
+    if(token.recipient_type==='dev')throw new AppError('Use the main-token launcher for this token.',403);
     if (path === "launch/prepare") { if (token.wallet !== s.wallet || token.status !== "draft") throw new AppError("This coin cannot be launched again.", 409); const c = await db().prepare("SELECT * FROM creators WHERE id = ?").bind(token.creator_id).first<{ id: string; username: string; profile_at: number }>(); assertRecipient(c, token.handle, token.creator_id); if (!token.metadata_uri) throw new AppError("Add a permanent metadata URI before launch."); return json(await chain.prepareLaunch(s, token)); }
     assertClaim(s, token); if (token.status !== "launched") throw new AppError("This coin has not launched."); return json(await chain.prepareClaim(s, token));
   }

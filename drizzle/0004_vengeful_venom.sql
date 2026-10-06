@@ -1,0 +1,1 @@
+ALTER TABLE `tokens` ADD `recipient_type` text DEFAULT 'instagram' NOT NULL;

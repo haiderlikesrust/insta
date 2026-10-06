@@ -34,3 +34,7 @@ docker compose -p instara-ci -f compose.dokploy.yaml -f compose.ci.yaml down
 ```
 
 Skip network creation if it already exists. The CI override exposes only `127.0.0.1:8080`. The smoke test uses an unfunded disposable wallet, checks persistence/authentication/CSRF/replay rejection, and verifies live transaction endpoints fail closed. It does not send funds or contact the paid profile reader. GitHub Actions runs these checks on Linux.
+
+## Main token and payout deduction
+
+The locked launcher is `https://instara.xyz/admin`. Set `DEV_WALLET_ADDRESS` to the authorized public wallet address. Follow [main-token and buyback setup](MAIN-TOKEN.md) before enabling either main-token operations or community payouts. Store `INSTARA_MINT`, optional `INSTARA_BUYBACK_POOL`, `BUYBACK_SLIPPAGE_BPS`, and `SOLANA_LOOKUP_TABLES` in Dokploy Environment. The Compose file passes these only to the backend.

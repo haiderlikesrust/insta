@@ -1,3 +1,5 @@
+import {assertDev} from "./admin-auth";
+import {createHash} from "node:crypto";
 import { Connection, Keypair, PublicKey, Transaction, VersionedTransaction, TransactionInstruction, ComputeBudgetProgram } from "@solana/web3.js";
 import { DynamicBondingCurveClient, DYNAMIC_BONDING_CURVE_PROGRAM_ID, deriveDbcPoolAddress, deriveDbcPoolAuthority, deriveDbcEventAuthority, deriveDammV2PoolAddress, DAMM_V2_MIGRATION_FEE_ADDRESS, getPriceFromSqrtPrice } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import { CpAmm, CP_AMM_PROGRAM_ID, derivePoolAuthority } from "@meteora-ag/cp-amm-sdk";
@@ -7,31 +9,39 @@ import { z } from "zod";
 import bs58 from "bs58";
 import { AppError, hash } from "./domain";
 import { config, db, readiness, type Session } from "./server";
-import { initializeVault, claimVault, vaultAddress, TOKEN_PROGRAM, NATIVE_MINT, identityHash, relayInstruction, discriminator } from "./escrow";
-export type TokenRecord = { id: string; wallet: string; name: string; symbol: string; creator_id: string | null; handle: string; metadata_uri: string; status: string; mint: string | null; vault: string | null };
+import { initializeVault, claimVault, vaultAddress, TOKEN_PROGRAM, NATIVE_MINT, identityHash, relayInstruction, discriminator, buybackAddress } from "./escrow";
+import {buybackRoute,splitClaim} from './buyback';
+import {versioned,validSignatures} from './transactions';
+export type TokenRecord = { recipient_type?: string; id: string; wallet: string; name: string; symbol: string; creator_id: string | null; handle: string; metadata_uri: string; status: string; mint: string | null; vault: string | null };
 type Intent = { id: string; token_id: string; wallet: string; kind: string; message_hash: string; mint: string; vault: string; signature: string | null; status: string; last_valid_height: number };
-async function runtime() {
-  if (!readiness().live) throw new AppError("Live transactions are not enabled.", 503);
-  const e = config(); if (e.SOLANA_NETWORK !== "mainnet-beta") throw new AppError("The launch integration requires mainnet. Test the escrow separately before enabling it.", 503);
-  const connection = new Connection(e.SOLANA_RPC_URL!, "confirmed");
-  if (await connection.getGenesisHash() !== "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp") throw new AppError("RPC network does not match Solana mainnet.", 503);
-  const program = new PublicKey(e.ESCROW_PROGRAM_ID!); const verifier = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(e.VERIFIER_SECRET_KEY!)));
-  if (verifier.publicKey.toBase58() !== e.VERIFIER_PUBLIC_KEY) throw new AppError("Verification authority configuration mismatch.", 503);
-  const [account, dbc] = await connection.getMultipleAccountsInfo([program, DYNAMIC_BONDING_CURVE_PROGRAM_ID]); if (!account?.executable || !dbc?.executable) throw new AppError("Required on-chain programs are not deployed.", 503);
+export async function poolRuntime(main = false) {
+ if (!readiness(main).live) throw new AppError("Live transactions are not enabled.", 503);
+ const e=config(); if(e.SOLANA_NETWORK !== "mainnet-beta")throw new AppError("Mainnet configuration is required.",503);
+ const connection=new Connection(e.SOLANA_RPC_URL!,"confirmed");
+ if(await connection.getGenesisHash() !== "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")throw new AppError("RPC network mismatch.",503);
   const client = new DynamicBondingCurveClient(connection,"confirmed"), configKey = new PublicKey(e.METEORA_CONFIG_KEY!);
   const onchain = await client.state.getPoolConfig(configKey), expected = buildInstaraCurve();
   if (!onchain || !onchain.quoteMint.equals(NATIVE_MINT) || !onchain.sqrtStartPrice.eq(expected.sqrtStartPrice) || !onchain.migrationQuoteThreshold.eq(expected.migrationQuoteThreshold) || onchain.creatorTradingFeePercentage !== 100 || onchain.migrationFeeOption !== 6 || onchain.creatorPermanentLockedLiquidityPercentage !== 100 || onchain.collectFeeMode !== 0 || onchain.migratedCollectFeeMode !== 0 || onchain.migratedPoolBaseFeeMode !== 0 || onchain.migratedCompoundingFeeBps !== 0 || onchain.migrationFeePercentage !== 0 || onchain.tokenUpdateAuthority !== 1 || !onchain.preMigrationTokenSupply.eq(expected.tokenSupply!.preMigrationTokenSupply) || !onchain.postMigrationTokenSupply.eq(expected.tokenSupply!.postMigrationTokenSupply) || onchain.migrationOption !== 1 || onchain.tokenType !== 0 || onchain.tokenDecimal !== 6 || onchain.migratedPoolFeeBps !== 200 || onchain.migratedDynamicFee !== 0 || onchain.poolFees.baseFee.cliffFeeNumerator.toString() !== '20000000' || onchain.poolFees.baseFee.firstFactor !== 0 || !onchain.poolFees.baseFee.secondFactor.isZero() || !onchain.poolFees.baseFee.thirdFactor.isZero() || onchain.poolFees.dynamicFee.initialized !== 0) throw new AppError("Meteora config differs from the fixed 2% / 20-to-250 curve. Launch blocked.",503);
-  return { connection, program, verifier, client, configKey };
+ return {connection,client,configKey};
 }
-async function persist(tx: Transaction, signers: Keypair[], s: Session, token: TokenRecord, kind: string, mint: PublicKey, vault: PublicKey, connection: Connection) {
-  const latest = await connection.getLatestBlockhash("confirmed"); tx.recentBlockhash = latest.blockhash; tx.feePayer = new PublicKey(s.wallet); tx.partialSign(...signers);
-  const serialized = tx.serialize({ requireAllSignatures: false }); if (serialized.length > 1232) throw new AppError("Transaction exceeds Solana’s size limit. Do not submit it; contact the operator.");
+async function runtime(){
+ const shared=await poolRuntime(),e=config(),program=new PublicKey(e.ESCROW_PROGRAM_ID!),verifier=Keypair.fromSecretKey(Uint8Array.from(JSON.parse(e.VERIFIER_SECRET_KEY!)));
+ if(verifier.publicKey.toBase58()!==e.VERIFIER_PUBLIC_KEY)throw new AppError("Verification authority configuration mismatch.",503);
+ if(!(await shared.connection.getAccountInfo(program))?.executable)throw new AppError("Escrow program is not deployed.",503);
+ const policy=await shared.connection.getAccountInfo(buybackAddress(program));
+ if(!policy||!policy.owner.equals(program)||policy.data.length!==40||!policy.data.subarray(0,8).equals(createHash('sha256').update('account:Buyback').digest().subarray(0,8))||!policy.data.subarray(8).equals(new PublicKey(e.INSTARA_MINT!).toBuffer()))throw new AppError('Initialize the matching INSTARA buyback policy before enabling community transactions.',503);
+ return {...shared,program,verifier};
+}
+export async function persist(tx: Transaction, signers: Keypair[], s: Session, token: TokenRecord, kind: string, mint: PublicKey, vault: PublicKey, connection: Connection) {
+  const latest = await connection.getLatestBlockhash("confirmed");
+  const signed=await versioned(connection,tx,new PublicKey(s.wallet),latest.blockhash,config().SOLANA_LOOKUP_TABLES,signers);
+  const serialized = Buffer.from(signed.serialize());
   const id = crypto.randomUUID();
-  const simulation = await connection.simulateTransaction(VersionedTransaction.deserialize(serialized), { sigVerify: false, replaceRecentBlockhash: false, commitment: "confirmed" });
+  const simulation = await connection.simulateTransaction(signed, { sigVerify: false, replaceRecentBlockhash: false, commitment: "confirmed" });
   if (simulation.value.err) throw new AppError("Transaction simulation failed. No funds were submitted; check escrow and pool configuration.",409);
-  if (kind === "launch") { const locked = await db().prepare("UPDATE tokens SET status='pending',mint=?,vault=? WHERE id=? AND wallet=? AND status='draft' RETURNING id").bind(mint.toBase58(),vault.toBase58(),token.id,s.wallet).first(); if (!locked) throw new AppError("A launch is already pending for this draft.", 409); }
-  try { await db().prepare("INSERT INTO intents (id,token_id,wallet,kind,message_hash,mint,vault,status,last_valid_height,created_at) VALUES (?,?,?,?,?,?,?,'prepared',?,?)").bind(id,token.id,s.wallet,kind,await hash(tx.serializeMessage()),mint.toBase58(),vault.toBase58(),latest.lastValidBlockHeight,Date.now()).run(); }
-  catch (e) { if (kind === "launch") await db().prepare("UPDATE tokens SET status='draft',mint=NULL,vault=NULL WHERE id=? AND status='pending' AND mint=?").bind(token.id,mint.toBase58()).run(); throw e; }
+  if (["launch","main_launch"].includes(kind)) { const locked = await db().prepare("UPDATE tokens SET status='pending',mint=?,vault=? WHERE id=? AND wallet=? AND status='draft' RETURNING id").bind(mint.toBase58(),vault.toBase58(),token.id,s.wallet).first(); if (!locked) throw new AppError("A launch is already pending for this draft.", 409); }
+  try { await db().prepare("INSERT INTO intents (id,token_id,wallet,kind,message_hash,mint,vault,status,last_valid_height,created_at) VALUES (?,?,?,?,?,?,?,'prepared',?,?)").bind(id,token.id,s.wallet,kind,await hash(signed.message.serialize()),mint.toBase58(),vault.toBase58(),latest.lastValidBlockHeight,Date.now()).run(); }
+  catch (e) { if (["launch","main_launch"].includes(kind)) await db().prepare("UPDATE tokens SET status='draft',mint=NULL,vault=NULL WHERE id=? AND status='pending' AND mint=?").bind(token.id,mint.toBase58()).run(); throw e; }
   return { intentId: id, transaction: serialized.toString("base64"), mint: mint.toBase58(), vault: vault.toBase58(), lastValidBlockHeight: latest.lastValidBlockHeight };
 }
 export async function prepareLaunch(s: Session, token: TokenRecord) {
@@ -63,18 +73,27 @@ export async function prepareClaim(s: Session, token: TokenRecord) {
       collect.push(relayInstruction(program,verifier.publicKey,mint,inner));
     }
   }
-  const tx = new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 500000 }),...collect,claimVault(program,payer,verifier.publicKey,mint,s.creator_id!,Math.floor(Date.now()/1000)+300));
-  return persist(tx,[verifier],s,token,"claim",mint,vault,connection);
+  const e=config(),policy=await connection.getAccountInfo(buybackAddress(program));
+  if(!e.INSTARA_MINT||!policy||!policy.owner.equals(program)||policy.data.length!==40||!policy.data.subarray(0,8).equals(createHash("sha256").update("account:Buyback").digest().subarray(0,8))||!policy.data.subarray(8).equals(new PublicKey(e.INSTARA_MINT).toBuffer()))throw new AppError('INSTARA buyback configuration is unavailable or mismatched.',503);
+  const snapshot=await versioned(connection,new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({units:700000}),...collect),payer,(await connection.getLatestBlockhash()).blockhash,e.SOLANA_LOOKUP_TABLES,[verifier]);
+  const simulation=await connection.simulateTransaction(snapshot,{sigVerify:false,commitment:'confirmed',accounts:{encoding:'base64',addresses:[quoteAta.toBase58()]}});
+  const balance=simulation.value.accounts?.[0];
+  if(simulation.value.err||!balance||balance.owner!==TOKEN_PROGRAM.toBase58())throw new AppError('Unable to collect and quote these fees. No funds were submitted.',409);
+  const raw=Buffer.from(balance.data[0],'base64');if(raw.length!==165)throw new AppError('Invalid fee token account.',409);
+  const split=splitClaim(raw.readBigUInt64LE(64)),route=await buybackRoute(connection,e,vault,split.buyback);
+  const tx=new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({units:1000000}),...collect,createAssociatedTokenAccountIdempotentInstruction(payer,getAssociatedTokenAddressSync(route.mint,vault,true),vault,route.mint),claimVault(program,payer,verifier.publicKey,mint,s.creator_id!,Math.floor(Date.now()/1000)+300,{...route,gross:split.gross}));
+  return {...await persist(tx,[verifier],s,token,'claim',mint,vault,connection),feeBreakdown:{grossLamports:split.gross.toString(),creatorLamports:split.creator.toString(),buybackLamports:split.buyback.toString(),minimumBurn:route.minimum.toString(),instaraMint:route.mint.toBase58()}};
 }
 export async function submit(s: Session, input: unknown) {
   const b = z.object({ intentId: z.string().uuid(), transaction: z.string().max(2000) }).parse(input);
   const intent = await db().prepare("SELECT * FROM intents WHERE id=? AND wallet=?").bind(b.intentId,s.wallet).first<Intent>(); if (!intent) throw new AppError("Transaction request not found.",404);
   if (intent.signature) return { signature: intent.signature };
-  const { connection } = await runtime(); const tx = Transaction.from(Buffer.from(b.transaction,"base64"));
-  if (await hash(tx.serializeMessage()) !== intent.message_hash || tx.feePayer?.toBase58() !== s.wallet || !tx.verifySignatures()) throw new AppError("The signed transaction differs from the approved request.",403);
+  if(intent.kind.startsWith("main_"))assertDev(s,config().DEV_WALLET_ADDRESS);
+  const { connection } = await (intent.kind.startsWith("main_")?poolRuntime(true):runtime()); const tx = VersionedTransaction.deserialize(Buffer.from(b.transaction,"base64"));
+  if (await hash(tx.message.serialize()) !== intent.message_hash || tx.message.staticAccountKeys[0]?.toBase58() !== s.wallet || !validSignatures(tx)) throw new AppError("The signed transaction differs from the approved request.",403);
   if (await connection.getBlockHeight("confirmed") > intent.last_valid_height) throw new AppError("This transaction expired. Recover the pending draft before preparing a replacement.",409);
   // Store the deterministic signature BEFORE network submission so a timeout cannot hide a landed transaction.
-  const signature = bs58.encode(tx.signature!); await db().prepare("UPDATE intents SET signature=?,status='submitted' WHERE id=? AND signature IS NULL").bind(signature,intent.id).run();
+  const signature = bs58.encode(tx.signatures[0]); await db().prepare("UPDATE intents SET signature=?,status='submitted' WHERE id=? AND signature IS NULL").bind(signature,intent.id).run();
   try { await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 }); }
   catch { return { signature, uncertain: true }; }
   return { signature };
@@ -82,12 +101,13 @@ export async function submit(s: Session, input: unknown) {
 export async function confirm(s: Session, input: unknown) {
   const b = z.object({ intentId: z.string().uuid(), signature: z.string().min(64).max(100) }).parse(input);
   const intent = await db().prepare("SELECT * FROM intents WHERE id=? AND wallet=?").bind(b.intentId,s.wallet).first<Intent>(); if (!intent || intent.signature !== b.signature) throw new AppError("Unknown transaction.",404);
-  const { connection } = await runtime(); const tx = await connection.getTransaction(b.signature,{ commitment: "finalized", maxSupportedTransactionVersion: 0 });
+  if(intent.kind.startsWith("main_"))assertDev(s,config().DEV_WALLET_ADDRESS);
+  const { connection } = await (intent.kind.startsWith("main_")?poolRuntime(true):runtime()); const tx = await connection.getTransaction(b.signature,{ commitment: "finalized", maxSupportedTransactionVersion: 0 });
   if (!tx) throw new AppError("Transaction is not finalized yet. Check confirmation again shortly.",409);
   if (tx.meta?.err || !tx.meta) throw new AppError("The on-chain transaction failed. No launch or payout was recorded.",409);
   if (await hash(tx.transaction.message.serialize()) !== intent.message_hash) throw new AppError("On-chain transaction does not match this request.",403);
   const statements = [db().prepare("UPDATE intents SET status='confirmed' WHERE id=?").bind(intent.id)];
-  if (intent.kind === "launch") statements.push(db().prepare("UPDATE tokens SET status='launched',signature=? WHERE id=? AND mint=? AND vault=?").bind(b.signature,intent.token_id,intent.mint,intent.vault));
+  if (["launch","main_launch"].includes(intent.kind)) statements.push(db().prepare("UPDATE tokens SET status='launched',signature=? WHERE id=? AND mint=? AND vault=?").bind(b.signature,intent.token_id,intent.mint,intent.vault));
   await db().batch(statements); return { ok: true, kind: intent.kind };
 }
 export async function market(token: TokenRecord) {
@@ -100,9 +120,10 @@ export async function market(token: TokenRecord) {
 }
 export async function recover(s: Session, input: unknown) {
   const {id}=z.object({id:z.string().uuid()}).parse(input);
-  const intent=await db().prepare("SELECT * FROM intents WHERE token_id=? AND wallet=? AND kind='launch' AND status IN ('prepared','submitted') ORDER BY created_at DESC LIMIT 1").bind(id,s.wallet).first<Intent>();
+  const intent=await db().prepare("SELECT * FROM intents WHERE token_id=? AND wallet=? AND kind IN ('launch','main_launch') AND status IN ('prepared','submitted') ORDER BY created_at DESC LIMIT 1").bind(id,s.wallet).first<Intent>();
   if(!intent)throw new AppError("No recoverable pending launch found.",404);
-  const {connection}=await runtime();
+  if(intent.kind.startsWith("main_"))assertDev(s,config().DEV_WALLET_ADDRESS);
+ const {connection}=await (intent.kind.startsWith("main_")?poolRuntime(true):runtime());
   if(await connection.getBlockHeight('finalized') <= intent.last_valid_height)throw new AppError("This launch can still land. Wait for its blockhash to expire before recovering it.",409);
   if(await connection.getAccountInfo(new PublicKey(intent.mint),'finalized'))throw new AppError("The mint exists on-chain. Confirm the existing launch; do not launch another coin.",409);
   if(intent.signature){const result=await connection.getSignatureStatuses([intent.signature],{searchTransactionHistory:true});if(result.value[0] && !result.value[0].err)throw new AppError("The transaction has landed. Check confirmation instead.",409);}

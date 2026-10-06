@@ -1,5 +1,10 @@
 # Disposable local/CI override; production exposes only Dokploy's gateway.
 services:
+  web:
+    environment:
+      # Public, unfunded test fixture. Never use this address for a real deployment.
+      DEV_WALLET_ADDRESS: F25s3DdjXdCxYBhh2z8FBusVEMT4b9bGNFVKJi3wFoF4
+      MAIN_LAUNCH_ENABLED: "false"
   gateway:
     ports:
       - "127.0.0.1:8080:80"

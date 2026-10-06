@@ -6,5 +6,7 @@ assert.deepEqual(await health.json(),{ok:true,database:'postgres',liveLaunches:f
 const page=await fetch(base);assert.equal(page.status,200);assert.match(await page.text(),/Instara/);
 assert.match(page.headers.get('content-security-policy'),/frame-ancestors 'none'/);
 const logo=await fetch(base+'/brand-logo.png');assert.equal(logo.status,200);assert.match(logo.headers.get('content-type'),/image\/png/);
+const admin=await fetch(base+'/admin');assert.equal(admin.status,200);assert.match(await admin.text(),/Dev wallet access only/);
 process.argv[2]=base;
+process.env.RUN_ADMIN_SMOKE='true';
 await import('./smoke.mjs');
