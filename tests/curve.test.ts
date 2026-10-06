@@ -1,0 +1,7 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { getPriceFromSqrtPrice, MigrationFeeOption, FEE_DENOMINATOR } from "@meteora-ag/dynamic-bonding-curve-sdk";
+import { buildFanfareCurve, usdTargets, ECONOMICS } from "../lib/curve";
+test("starting and graduation market caps use quote units, not deposit threshold",()=>{const c=buildFanfareCurve();const start=getPriceFromSqrtPrice(c.sqrtStartPrice,6,9).toNumber()*ECONOMICS.supply;const end=getPriceFromSqrtPrice(c.curve[0].sqrtPrice,6,9).toNumber()*ECONOMICS.supply;assert.ok(Math.abs(start-20)<0.000001);assert.ok(Math.abs(end-250)<1e-8);assert.notEqual(c.migrationQuoteThreshold.toString(),"250000000000");});
+test("2% is fixed before and after migration with no dynamic surcharge",()=>{const c=buildFanfareCurve();assert.equal(c.poolFees.baseFee.cliffFeeNumerator.toNumber()/Number(FEE_DENOMINATOR),.02);assert.equal(c.poolFees.dynamicFee,null);assert.equal(c.poolFees.baseFee.firstFactor,0);assert.equal(c.migrationFeeOption,MigrationFeeOption.Customizable);assert.equal(c.migratedPoolFee.poolFeeBps,200);assert.equal(c.migratedPoolFee.dynamicFee,0);assert.equal(c.creatorTradingFeePercentage,100);assert.equal(c.creatorPermanentLockedLiquidityPercentage,100);});
+test("USD valuation changes with SOL price without changing the SOL curve",()=>{assert.deepEqual(usdTargets(100),{start:2000,graduation:25000,tokenStart:.000002});assert.deepEqual(usdTargets(150),{start:3000,graduation:37500,tokenStart:.000003});assert.throws(()=>usdTargets(NaN));assert.throws(()=>usdTargets(-1));});

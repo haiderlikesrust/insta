@@ -1,0 +1,2 @@
+export const ECONOMICS = Object.freeze({ initialMarketCapSol: 20, migrationMarketCapSol: 250, tradingFeeBps: 200, supply: 1_000_000_000, creatorSharePercent: 100 });
+export function usdTargets(solPrice: number) { if (!Number.isFinite(solPrice) || solPrice <= 0) throw new Error("Invalid SOL/USD price"); return { start: solPrice * 20, graduation: solPrice * 250, tokenStart: solPrice * 20 / ECONOMICS.supply }; }
