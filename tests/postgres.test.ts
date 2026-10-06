@@ -1,8 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {migratePostgres,postgresSql} from '../lib/postgres';
+import {migratePostgres,postgresSql,postgresOptions,databaseDiagnostic} from '../lib/postgres';
 import {recipientWrites,verificationWrites} from '../lib/bio-store';
+test('separate database fields preserve password punctuation and diagnostics never include secrets',()=>{
+ const password='test@:/?#%';const options=postgresOptions({PGHOST:'postgres',PGPASSWORD:password});assert.equal(options?.password,password);assert.equal(options?.host,'postgres');assert.equal(options?.connectionString,undefined);
+ assert.deepEqual(postgresOptions({DATABASE_URL:'postgres://localhost/qa'}),{connectionString:'postgres://localhost/qa'});assert.equal(postgresOptions({}),undefined);
+ const message=databaseDiagnostic({code:'28P01',message:password,connectionString:password});assert.match(message,/original password/);assert.ok(!message.includes(password));assert.ok(!databaseDiagnostic({code:password}).includes(password));
+});
 
 test('PostgreSQL migrations and ownership writes preserve unclaimed fees and consume proof once',async()=>{
  const pg=new PGlite();

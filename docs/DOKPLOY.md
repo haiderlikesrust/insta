@@ -7,7 +7,7 @@ This follows Grailshot's deployment pattern: a standalone Node web server behind
 1. Create a project and a **Compose** service named `instara`.
 2. Select the GitHub repository `haiderlikesrust/insta`, branch `main`. For Git URL source, use `https://github.com/haiderlikesrust/insta.git`.
 3. Set Compose path to `compose.dokploy.yaml` and build context to the repository root. Do not use the CI override on the public server.
-4. Copy `deploy/dokploy.env.example` into Dokploy's environment settings. Keep `APP_ORIGIN=https://instara.xyz`. Replace `POSTGRES_PASSWORD` with a unique long alphanumeric password; this is interpolated into a database URL.
+4. Copy `deploy/dokploy.env.example` into Dokploy's environment settings. Keep `APP_ORIGIN=https://instara.xyz`. Replace `POSTGRES_PASSWORD` with a unique long password. Compose passes it separately to PostgreSQL; it is not interpolated into a connection URL. Keep its existing value on redeploy.
 5. Add domain **instara.xyz** to service **gateway**, container port **80**, path `/`. Enable HTTPS and Let's Encrypt. Point the domain's DNS at your Dokploy server.
 6. Deploy. `/api/health` must return HTTP 200 with `database: "postgres"`. Migrations run automatically under a PostgreSQL advisory lock before database requests are served.
 

@@ -15,7 +15,7 @@ export function json(data: unknown, status = 200, headers: Record<string, string
 export async function body(req: Request) { if (!req.headers.get("content-type")?.startsWith("application/json")) throw new AppError("Expected JSON.", 415); const reader = req.body?.getReader(); if (!reader) throw new AppError("Missing request."); const chunks: Uint8Array[] = []; let n = 0; for (;;) { const { done, value } = await reader.read(); if (done) break; n += value.length; if (n > 20000) { await reader.cancel(); throw new AppError("Request too large.", 413); } chunks.push(value); } const all = new Uint8Array(n); let offset = 0; for (const c of chunks) { all.set(c, offset); offset += c.length; } try { return JSON.parse(new TextDecoder().decode(all)); } catch { throw new AppError("Invalid JSON."); } }
 export function cookie(req: Request, token: string, age = 86400) { return `instara_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}${origin(req).startsWith("https:") ? "; Secure" : ""}`; }
 export function clientIp(req: Request) {
-  if (!config().DATABASE_URL) return req.headers.get('cf-connecting-ip') || 'local';
+  if (!config().DATABASE_URL&&!config().PGHOST) return req.headers.get('cf-connecting-ip') || 'local';
   const hops=Number(config().TRUST_PROXY_HOPS||0), chain=(req.headers.get('x-forwarded-for')||'').split(',').map(s=>s.trim()).filter(Boolean);
   return Number.isInteger(hops)&&hops>0&&chain.length>=hops ? chain[chain.length-hops] : 'local';
 }

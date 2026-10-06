@@ -15,7 +15,7 @@ async function handler(req: Request) {
     if(!validWorkerAuthorization(config().BACKEND_WALLET_SECRET_KEY,req.headers.get('x-instara-worker')))throw new AppError('Unauthorized.',401);
     return json(await (await import('@/lib/custodial-claims')).settlePending());
   }
-  if (path === 'health' && req.method === 'GET') { await db().prepare('SELECT 1').first(); return json({ok:true,database:config().DATABASE_URL?'postgres':'d1',liveLaunches:readiness().live}); }
+  if (path === 'health' && req.method === 'GET') { await db().prepare('SELECT 1').first(); return json({ok:true,database:(config().DATABASE_URL||config().PGHOST)?'postgres':'d1',liveLaunches:readiness().live}); }
   if (req.method === "POST") { csrf(req); await rateLimit(`ip:${clientIp(req)}`, 60); }
   if(req.method==='GET'&&/^(media|metadata)\/[a-f0-9]{64}$/.test(path)){const [kind,id]=path.split('/');return (await import('@/lib/media')).readAsset(kind as 'media'|'metadata',id);}
   if(path==='volumes'&&req.method==='GET')return json(await (await import('@/lib/volume')).coinVolumes());

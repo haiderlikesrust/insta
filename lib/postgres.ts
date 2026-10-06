@@ -5,6 +5,27 @@ pg.types.setTypeParser(20,value=>{const n=Number(value);if(!Number.isSafeInteger
 export const postgresSql=(sql:string)=>{let i=0;return sql.replace(/\?/g,()=>`$${++i}`);};
 export const postgresMigration=(sql:string)=>sql.replace(/`([^`]+)`/g,'"$1"').replace(/\binteger\b/gi,'BIGINT');
 type Row=Record<string,unknown>;
+export function postgresOptions(env:Record<string,string|undefined>):pg.PoolConfig|undefined{
+ if(env.PGHOST)return {host:env.PGHOST,port:Number(env.PGPORT||5432),user:env.PGUSER||'instara',database:env.PGDATABASE||'instara',password:env.PGPASSWORD};
+ if(env.DATABASE_URL)return {connectionString:env.DATABASE_URL};
+}
+export function databaseDiagnostic(error:unknown){
+ const raw=(error as {code?:unknown})?.code,code=typeof raw==='string'&&/^[A-Z0-9_]{2,30}$/.test(raw)?raw:'DATABASE_INIT';
+ const hints:Record<string,string>={
+  '28P01':'Database password rejected. An existing Postgres volume keeps its original password; changing the environment does not update it.',
+  '28000':'Database authentication rejected. Check the database user and authentication settings.',
+  '3D000':'Database does not exist. Check the existing Postgres volume and database name.',
+  '42P07':'A database table already exists but its migration is not recorded. Preserve the volume and inspect migration history.',
+  '42701':'A database column already exists but its migration is not recorded. Preserve the volume and inspect migration history.',
+  '23505':'A database uniqueness constraint blocked migration. Existing records need inspection.',
+  '42501':'Database user lacks permission to apply migrations.',
+  ECONNREFUSED:'Cannot reach Postgres. Check the postgres container and private database network.',
+  ENOTFOUND:'Postgres hostname could not be resolved. Check the database network.',
+  EAI_AGAIN:'Postgres hostname lookup is temporarily unavailable.',
+  '53300':'Postgres connection limit reached.',
+ };
+ return `Database initialization failed [${code}]. ${hints[code]||'Check Postgres container logs and migration history. No connection credentials are logged.'}`;
+}
 export interface QueryClient {query(sql:string,args?:unknown[]):Promise<{rows:Row[]}>;}
 export async function migratePostgres(client:QueryClient,directory=resolve('drizzle')){
  await client.query('BEGIN');try{
@@ -28,8 +49,8 @@ export class PreparedStatement {
 }
 export class PostgresDatabase {
  private pool:pg.Pool;private ready:Promise<void>|null=null;
- constructor(url:string){this.pool=new pg.Pool({connectionString:url,max:10,connectionTimeoutMillis:8000,query_timeout:15000});this.pool.on('error',()=>console.error('Database connection interrupted'));}
- private initialize(){if(!this.ready)this.ready=(async()=>{const c=await this.pool.connect();try{await migratePostgres(c);}finally{c.release();}})().catch(e=>{this.ready=null;throw e;});return this.ready;}
+ constructor(options:string|pg.PoolConfig){this.pool=new pg.Pool({...typeof options==='string'?{connectionString:options}:options,max:10,connectionTimeoutMillis:8000,query_timeout:15000});this.pool.on('error',()=>console.error('Database connection interrupted'));}
+ private initialize(){if(!this.ready)this.ready=(async()=>{const c=await this.pool.connect();try{await migratePostgres(c);}finally{c.release();}})().catch(e=>{this.ready=null;console.error(databaseDiagnostic(e));throw e;});return this.ready;}
  prepare(sql:string){return new PreparedStatement(this,sql);}
  async query(sql:string,args:unknown[]=[]){await this.initialize();return this.pool.query(postgresSql(sql),args);}
  async batch(statements:PreparedStatement[]){

@@ -33,7 +33,11 @@ services:
       PORT: "3000"
       TRUST_PROXY_HOPS: "2"
       APP_ORIGIN: ${APP_ORIGIN:?Set APP_ORIGIN to your exact HTTPS origin}
-      DATABASE_URL: postgres://instara:${POSTGRES_PASSWORD:?Set a long alphanumeric POSTGRES_PASSWORD}@postgres:5432/instara
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: instara
+      PGDATABASE: instara
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       DEV_WALLET_ADDRESS: ${DEV_WALLET_ADDRESS:-}
       MAIN_LAUNCH_ENABLED: ${MAIN_LAUNCH_ENABLED:-false}
       INSTARA_MINT: ${INSTARA_MINT:-}

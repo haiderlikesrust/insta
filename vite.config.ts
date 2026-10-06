@@ -43,6 +43,8 @@ export default defineConfig(async ({ command }) => {
     resolve: { alias: [
       { find: /^cloudflare:workers$/, replacement: fileURLToPath(new URL('./lib/node-env.ts', import.meta.url)) },
       { find: /^@coral-xyz\/anchor$/, replacement: fileURLToPath(new URL('./node_modules/@coral-xyz/anchor/dist/cjs/index.js', import.meta.url)) },
+      // The native binding loader is incompatible with the bundled ESM server.
+      { find: /^bigint-buffer$/, replacement: fileURLToPath(new URL('./node_modules/bigint-buffer/dist/browser.js', import.meta.url)) },
     ] },
   };
   // Use Miniflare's local Request.cf placeholder unless fetching is requested.
