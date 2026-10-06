@@ -15,6 +15,9 @@ const auth=await call('wallet/verify',{id:challenge.data.id,signature});assert.e
 assert.equal((await call('wallet/verify',{id:challenge.data.id,signature})).status,401);
 const draft=await call('drafts',{name:'Local QA draft',symbol:'LOCALQA',handle:'fanfare_qa_missing',description:'Local-only security test',image:'',metadataUri:''});assert.equal(draft.status,200);
 const loaded=await call('state');assert.ok(loaded.data.drafts.some(d=>d.id===draft.data.id));
+assert.equal((await call('bio/status',{})).data.challenge,null);
+assert.equal((await call('bio/start',{username:'fanfare_qa_missing'})).status,503);
+assert.equal((await call('recipient/start',{username:'fanfare_qa_missing'})).status,503);
 const launch=await call('launch/prepare',{id:draft.data.id});assert.equal(launch.status,503);assert.match(launch.data.error,/disabled|enabled/);
 const price=await call('price');assert.equal(price.status,200);if(price.data.price){assert.ok(price.data.price.targets.start>0);assert.ok(Math.abs(price.data.price.targets.graduation/price.data.price.targets.start-12.5)<1e-10);}
 assert.equal((await call('wallet/logout',{})).status,200);assert.equal((await call('drafts',{id:draft.data.id})).status,401);

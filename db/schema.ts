@@ -2,7 +2,9 @@
 // Add Drizzle tables here when the site actually needs a database.
 // See examples/d1/db/schema.ts for an opt-in example.
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
-export const creators = sqliteTable("creators", { id: text().primaryKey(), username: text().notNull().unique(), verified_at: integer().notNull() });
+export const creators = sqliteTable("creators", { id: text().primaryKey(), username: text().notNull().unique(), verified_at: integer().notNull(), profile_at: integer().notNull().default(0), claimed_at: integer(), followers: integer(), biography: text(), picture: text() });
+export const recipientLookups=sqliteTable("recipient_lookups",{id:text().primaryKey(),session_hash:text().notNull(),wallet:text().notNull(),username:text().notNull(),run_id:text(),phase:text().notNull(),error:text(),created_at:integer().notNull()},t=>[index("idx_recipient_session").on(t.session_hash,t.created_at)]);
+export const bioChallenges = sqliteTable("bio_challenges", { id: text().primaryKey(), session_hash: text().notNull(), wallet: text().notNull(), username: text().notNull(), account_id: text(), code: text().notNull(), expires_at: integer().notNull(), phase: text().notNull(), lookup_run_id: text(), check_run_id: text(), profile_json: text(), error: text(), created_at: integer().notNull() }, t => [index("idx_bio_session").on(t.session_hash,t.created_at)]);
 export const sessions = sqliteTable("sessions", { token_hash: text().primaryKey(), wallet: text().notNull(), creator_id: text(), verified_at: integer(), expires_at: integer().notNull() });
 export const challenges = sqliteTable("challenges", { id: text().primaryKey(), wallet: text().notNull(), message: text().notNull(), expires_at: integer().notNull() });
 export const oauthStates = sqliteTable("oauth_states", { state_hash: text().primaryKey(), session_hash: text().notNull(), expires_at: integer().notNull() });

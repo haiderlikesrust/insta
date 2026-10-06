@@ -1,0 +1,1 @@
+ALTER TABLE `creators` ADD `claimed_at` integer;
