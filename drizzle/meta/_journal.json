@@ -64,6 +64,13 @@
       "when": 1791326255591,
       "tag": "0008_slippery_mister_fear",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791326848609,
+      "tag": "0009_magical_maestro",
+      "breakpoints": true
     }
   ]
 }

@@ -10,7 +10,9 @@ import { AppError, hash } from "./domain";
 import { config, db, readiness, type Session } from "./server";
 import {NATIVE_MINT} from "./solana";
 import {versioned,validSignatures} from './transactions';
-export type TokenRecord = { recipient_type?: string; id: string; wallet: string; name: string; symbol: string; creator_id: string | null; handle: string; metadata_uri: string; status: string; mint: string | null; vault: string | null };
+import {createMetadata} from './token-metadata';
+import {initialBuy} from './initial-buy';
+export type TokenRecord = { revision?:number; description?:string; image?:string; website?:string; twitter?:string; telegram?:string; dev_buy_usd?:string; recipient_type?: string; id: string; wallet: string; name: string; symbol: string; creator_id: string | null; handle: string; metadata_uri: string; status: string; mint: string | null; vault: string | null };
 type Intent = { id: string; token_id: string; wallet: string; kind: string; message_hash: string; mint: string; vault: string; signature: string | null; status: string; last_valid_height: number };
 export async function setupRuntime(){
  const e=config(); if(e.SOLANA_NETWORK !== "mainnet-beta"||!e.SOLANA_RPC_URL)throw new AppError("Configure your mainnet RPC before creating the launch configuration.",503);
@@ -37,14 +39,16 @@ export async function persist(tx: Transaction, signers: Keypair[], s: Session, t
   const id = crypto.randomUUID();
   const simulation = await connection.simulateTransaction(signed, { sigVerify: false, replaceRecentBlockhash: false, commitment: "confirmed" });
   if (simulation.value.err) throw new AppError("Transaction simulation failed. No funds were submitted; check wallet funding and pool configuration.",409);
-  if (["launch","main_launch"].includes(kind)) { const locked = await db().prepare("UPDATE tokens SET status='pending',mint=?,vault=? WHERE id=? AND wallet=? AND status='draft' RETURNING id").bind(mint.toBase58(),vault.toBase58(),token.id,s.wallet).first(); if (!locked) throw new AppError("A launch is already pending for this draft.", 409); }
+  if (["launch","main_launch"].includes(kind)) { const locked = await db().prepare("UPDATE tokens SET status='pending',mint=?,vault=?,metadata_uri=?,website=? WHERE id=? AND wallet=? AND status='draft' AND revision=? RETURNING id").bind(mint.toBase58(),vault.toBase58(),token.metadata_uri,token.website||'',token.id,s.wallet,token.revision||0).first(); if (!locked) throw new AppError("This draft changed or already has a pending launch. Refresh and try again.", 409); }
   try { await db().prepare("INSERT INTO intents (id,token_id,wallet,kind,message_hash,mint,vault,status,last_valid_height,created_at) VALUES (?,?,?,?,?,?,?,'prepared',?,?)").bind(id,token.id,s.wallet,kind,await hash(signed.message.serialize()),mint.toBase58(),vault.toBase58(),latest.lastValidBlockHeight,Date.now()).run(); }
   catch (e) { if (["launch","main_launch"].includes(kind)) await db().prepare("UPDATE tokens SET status='draft',mint=NULL,vault=NULL WHERE id=? AND status='pending' AND mint=?").bind(token.id,mint.toBase58()).run(); throw e; }
   return { intentId: id, transaction: serialized.toString("base64"), mint: mint.toBase58(), vault: vault.toBase58(), lastValidBlockHeight: latest.lastValidBlockHeight };
 }
-export async function prepareLaunch(s:Session,token:TokenRecord){
+export async function prepareLaunch(s:Session,token:TokenRecord,appOrigin:string){
  const {connection,client,configKey,master}=await runtime(),mint=Keypair.generate(),payer=new PublicKey(s.wallet),authority=feeWallet(master,mint.publicKey);
- const create=await client.creator.createPool({baseMint:mint.publicKey,name:token.name,symbol:token.symbol,uri:token.metadata_uri,poolCreator:authority.publicKey,payer,config:configKey});
+ const metadata=await createMetadata(token,mint.publicKey.toBase58(),appOrigin);
+ const create=await client.creator.createPoolWithFirstBuy({createPoolParam:{baseMint:mint.publicKey,name:token.name,symbol:token.symbol,uri:metadata.uri,poolCreator:authority.publicKey,payer,config:configKey},firstBuyParam:await initialBuy(client,payer,token.dev_buy_usd)});
+ token={...token,metadata_uri:metadata.uri};
  const tx=new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({units:600000}),...create.instructions);
  // The fee authority only signs if Meteora requires it; these launch instructions cannot spend its balance.
  const signers=[mint];if(tx.instructions.some(ix=>ix.keys.some(k=>k.isSigner&&k.pubkey.equals(authority.publicKey))))signers.push(authority);
@@ -76,7 +80,7 @@ export async function confirm(s: Session, input: unknown) {
   if (tx.meta?.err || !tx.meta) throw new AppError("The on-chain transaction failed. No launch or payout was recorded.",409);
   if (await hash(tx.transaction.message.serialize()) !== intent.message_hash) throw new AppError("On-chain transaction does not match this request.",403);
   const statements = [db().prepare("UPDATE intents SET status='confirmed' WHERE id=?").bind(intent.id)];
-  if (["launch","main_launch"].includes(intent.kind)) statements.push(db().prepare("UPDATE tokens SET status='launched',signature=? WHERE id=? AND mint=? AND vault=?").bind(b.signature,intent.token_id,intent.mint,intent.vault));
+  if (["launch","main_launch"].includes(intent.kind)) statements.push(db().prepare("UPDATE tokens SET status='launched',signature=?,launched_at=COALESCE(launched_at,?) WHERE id=? AND mint=? AND vault=?").bind(b.signature,tx.blockTime?tx.blockTime*1000:Date.now(),intent.token_id,intent.mint,intent.vault));
   if(['main_config','main_launch','main_lookup'].includes(intent.kind)){
     const key=intent.kind==='main_config'?'METEORA_CONFIG_KEY':intent.kind==='main_lookup'?'SOLANA_LOOKUP_TABLES':'INSTARA_MINT';
     const existing=config()[key];if(existing&&existing!==intent.mint)throw new AppError('A different deployment address is already configured. Resolve that conflict before confirmation.',409);

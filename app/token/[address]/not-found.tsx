@@ -1,0 +1,1 @@
+export default function NotFound(){return <main className="app-shell"><div className="empty-state"><h1>Coin not found</h1><p>This address doesn’t have a confirmed Instara launch.</p><a className="primary-button" href="/?tab=explore">Explore coins</a></div></main>;}

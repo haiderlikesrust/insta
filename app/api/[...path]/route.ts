@@ -17,10 +17,17 @@ async function handler(req: Request) {
   }
   if (path === 'health' && req.method === 'GET') { await db().prepare('SELECT 1').first(); return json({ok:true,database:config().DATABASE_URL?'postgres':'d1',liveLaunches:readiness().live}); }
   if (req.method === "POST") { csrf(req); await rateLimit(`ip:${clientIp(req)}`, 60); }
+  if(req.method==='GET'&&/^(media|metadata)\/[a-f0-9]{64}$/.test(path)){const [kind,id]=path.split('/');return (await import('@/lib/media')).readAsset(kind as 'media'|'metadata',id);}
+  if(path==='volumes'&&req.method==='GET')return json(await (await import('@/lib/volume')).coinVolumes());
+  if(path.startsWith('token/')&&req.method==='GET'){
+    let mint:string;try{mint=new PublicKey(path.slice(6)).toBase58();}catch{throw new AppError('Coin not found.',404);}
+    const token=await db().prepare("SELECT tokens.*,creators.claimed_at FROM tokens LEFT JOIN creators ON creators.id=tokens.creator_id WHERE tokens.mint=? AND tokens.status='launched'").bind(mint).first();
+    if(!token)throw new AppError('Coin not found.',404);return json({token});
+  }
   if (path === "state" && req.method === "GET") {
     const s = await session(req, false);
     const creators = await db().prepare("SELECT id, username, followers, biography, picture, claimed_at FROM creators WHERE profile_at > ? ORDER BY username LIMIT 200").bind(now-900000).all();
-    const tokens = await db().prepare("SELECT tokens.*, creators.claimed_at FROM tokens LEFT JOIN creators ON creators.id=tokens.creator_id WHERE tokens.status='launched' ORDER BY tokens.created_at DESC LIMIT 100").all();
+    const tokens = await db().prepare("SELECT tokens.*, creators.claimed_at FROM tokens LEFT JOIN creators ON creators.id=tokens.creator_id WHERE tokens.status='launched' ORDER BY COALESCE(tokens.launched_at,tokens.created_at) DESC").all();
     const drafts = s ? await db().prepare("SELECT * FROM tokens WHERE wallet = ? AND recipient_type='instagram' AND status IN ('draft','pending') ORDER BY created_at DESC LIMIT 100").bind(s.wallet).all() : { results: [] };
     const pending = s ? await db().prepare('SELECT id AS "intentId", signature FROM intents WHERE wallet=? AND kind IN (\'launch\',\'claim\') AND status=\'submitted\' ORDER BY created_at DESC LIMIT 1').bind(s.wallet).first() : null;
     const identity = s?.creator_id ? await db().prepare("SELECT id, username, followers, biography, picture FROM creators WHERE id = ?").bind(s.creator_id).first() : null;
@@ -44,11 +51,12 @@ async function handler(req: Request) {
   if (path === "wallet/logout" && req.method === "POST") { const s = await session(req, false); if (s) await db().prepare("DELETE FROM sessions WHERE token_hash = ?").bind(s.token_hash).run(); return json({ ok: true }, 200, { "Set-Cookie": cookie(req, "", 0) }); }
   if (path.startsWith("market/") && req.method === "GET") { const id = z.string().uuid().parse(path.split('/')[1]); const token = await db().prepare("SELECT * FROM tokens WHERE id=? AND status='launched'").bind(id).first<TokenRecord>(); if (!token) throw new AppError("Coin not found.",404); const {market}=await import('@/lib/chain'); return json({market:await market(token)}); }
   const s = (await session(req))!;
+  if(path==='media'&&req.method==='POST')return json(await (await import('@/lib/media')).uploadImage(req,s));
   if (path.startsWith('admin/')) {
     const {assertDev}=await import('@/lib/admin-auth');assertDev(s,config().DEV_WALLET_ADDRESS);
     const main=await import('@/lib/main-token');
     if(path==='admin/state'&&req.method==='GET')return json(await main.mainState(s));
-    if(path==='admin/prepare'&&req.method==='POST')return json(await main.prepareMain(s,await body(req)));
+    if(path==='admin/prepare'&&req.method==='POST')return json(await main.prepareMain(s,await body(req),origin(req)));
     if(path==='admin/claim'&&req.method==='POST')return json(await main.claimMain(s));
     if(path==='admin/lookup/prepare'&&req.method==='POST')return json(await main.prepareLookup(s));
     if(path==='admin/lookup/recover'&&req.method==='POST')return json(await main.recoverConfiguration(s,true));
@@ -67,8 +75,8 @@ async function handler(req: Request) {
     if (b.id && (!old || old.status !== "draft" || (old as {recipient_type?:string}).recipient_type === 'dev')) throw new AppError("This draft cannot be edited.", 409);
     const c = await db().prepare("SELECT id FROM creators WHERE username = ?").bind(b.handle).first<{ id: string }>();
     if (old?.creator_id && old.handle === b.handle && c?.id && old.creator_id !== c.id) throw new AppError("This handle has changed owners. Create a new draft after verifying the intended account.", 409);
-    if (old) await db().prepare("UPDATE tokens SET name=?,symbol=?,description=?,handle=?,creator_id=?,image=?,metadata_uri=? WHERE id=? AND wallet=? AND status='draft'").bind(b.name,b.symbol,b.description,b.handle,old.handle === b.handle ? old.creator_id || c?.id || null : c?.id || null,b.image,b.metadataUri,id,s.wallet).run();
-    else await db().prepare("INSERT INTO tokens (id,wallet,name,symbol,description,handle,creator_id,image,metadata_uri,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,'draft',?)").bind(id,s.wallet,b.name,b.symbol,b.description,b.handle,c?.id || null,b.image,b.metadataUri,now).run();
+    if (old) await db().prepare("UPDATE tokens SET name=?,symbol=?,description=?,handle=?,creator_id=?,image=?,metadata_uri='',website=?,twitter=?,telegram=?,dev_buy_usd=?,revision=revision+1 WHERE id=? AND wallet=? AND status='draft'").bind(b.name,b.symbol,b.description,b.handle,old.handle === b.handle ? old.creator_id || c?.id || null : c?.id || null,b.image,b.website,b.twitter,b.telegram,String(b.devBuyUsd),id,s.wallet).run();
+    else await db().prepare("INSERT INTO tokens (id,wallet,name,symbol,description,handle,creator_id,image,metadata_uri,website,twitter,telegram,dev_buy_usd,status,created_at) VALUES (?,?,?,?,?,?,?,?,'',?,?,?,?,'draft',?)").bind(id,s.wallet,b.name,b.symbol,b.description,b.handle,c?.id || null,b.image,b.website,b.twitter,b.telegram,String(b.devBuyUsd),now).run();
     return json({ id });
   }
   if (["launch/prepare", "claim/prepare", "launch/submit", "launch/confirm", "launch/recover"].includes(path) && req.method === "POST") {
@@ -80,7 +88,7 @@ async function handler(req: Request) {
     const { id } = z.object({ id: z.string().uuid() }).parse(b);
     const token = await db().prepare("SELECT * FROM tokens WHERE id = ?").bind(id).first<TokenRecord>(); if (!token) throw new AppError("Coin not found.", 404);
     if(token.recipient_type==='dev')throw new AppError('Use the main-token launcher for this token.',403);
-    if (path === "launch/prepare") { if (token.wallet !== s.wallet || token.status !== "draft") throw new AppError("This coin cannot be launched again.", 409); const c = await db().prepare("SELECT * FROM creators WHERE id = ?").bind(token.creator_id).first<{ id: string; username: string; profile_at: number }>(); assertRecipient(c, token.handle, token.creator_id); if (!token.metadata_uri) throw new AppError("Add a permanent metadata URI before launch."); return json(await chain.prepareLaunch(s, token)); }
+    if (path === "launch/prepare") { if (token.wallet !== s.wallet || token.status !== "draft") throw new AppError("This coin cannot be launched again.", 409); const c = await db().prepare("SELECT * FROM creators WHERE id = ?").bind(token.creator_id).first<{ id: string; username: string; profile_at: number }>(); assertRecipient(c, token.handle, token.creator_id); return json(await chain.prepareLaunch(s, token,origin(req))); }
     assertClaim(s, token); if (token.status !== "launched") throw new AppError("This coin has not launched."); return json(await chain.prepareClaim(s, token));
   }
   throw new AppError("Not found.", 404);

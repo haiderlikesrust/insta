@@ -37,7 +37,9 @@ This model trusts the operator, backend signing key, database and profile reader
 
 Wallet challenges are single-use; sessions use HttpOnly/SameSite cookies. Writes enforce origin checks, validation and rate limits. Launch transactions are bound to exact message hashes and listed only after finalized confirmation. Expired launches require block-height and mint-absence checks before recovery.
 
-Trading links to GMGN and embeds charts; this app does not include a swap terminal or metadata pinning service. Launchers supply permanent metadata/image URLs. No fake coins, balances, volume or earnings are displayed.
+Each confirmed mint has a public /token/<address> page with a GMGN chart, USD valuations, creator badge, contract address and social links. Explore sorts by newest, oldest or 24-hour USD volume from DEX Screener (unindexed coins show unavailable volume).
+
+Both launch forms accept image uploads and optional website, X, Telegram and USD dev-buy amounts. Images are compressed in the browser and stored in the database; launch metadata is generated automatically at an immutable content-addressed URL. The default metadata website is APP_ORIGIN/token/<mint>. These hosted assets depend on your domain and database backups; no external pinning API is needed. A dev buy is an atomic Meteora first purchase by the launching wallet, quoted against the initial curve with 1% slippage protection and a fresh SOL/USD conversion. Network/account creation costs are additional. Zero skips the purchase. This app links to GMGN for subsequent trading. No fake coins, balances, volume or earnings are displayed.
 
 ## Files
 

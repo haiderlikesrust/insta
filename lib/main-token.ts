@@ -3,6 +3,8 @@ import {AddressLookupTableProgram,SystemProgram,ComputeBudgetProgram,Keypair,Pub
 import {DYNAMIC_BONDING_CURVE_PROGRAM_ID,deriveDbcPoolAuthority,deriveDbcEventAuthority,deriveDbcPoolAddress,deriveDammV2PoolAddress,DAMM_V2_MIGRATION_FEE_ADDRESS} from '@meteora-ag/dynamic-bonding-curve-sdk';
 import {CpAmm,CP_AMM_PROGRAM_ID,derivePoolAuthority} from '@meteora-ag/cp-amm-sdk';
 import BN from 'bn.js';
+import {createMetadata} from './token-metadata';
+import {initialBuy} from './initial-buy';
 import {assertDev} from './admin-auth';
 import {AppError,draftSchema} from './domain';
 import {config,db,readiness,type Session} from './server';
@@ -38,19 +40,21 @@ export async function recoverConfiguration(s:Session,lookup=false){
  if(pending.signature){const result=await connection.getSignatureStatuses([pending.signature],{searchTransactionHistory:true});if(result.value[0]&&!result.value[0].err)throw new AppError('The transaction landed. Confirm it instead.',409);}
  await db().prepare("UPDATE intents SET status='expired' WHERE id=? AND status IN ('prepared','submitted')").bind(pending.id).run();return {ok:true};
 }
-export async function prepareMain(s:Session,input:unknown){
+export async function prepareMain(s:Session,input:unknown,appOrigin:string){
  const wallet=assertDev(s,config().DEV_WALLET_ADDRESS),e=config();
  if(e.INSTARA_MINT)throw new AppError('An INSTARA mint is already configured. A second main token cannot be launched.',409);
  const b=draftSchema.parse({...input as Record<string,unknown>,name:'Instara',symbol:'INSTARA',handle:'instara'});
- if(!b.metadataUri)throw new AppError('Add the permanent INSTARA metadata URI.');
  const {connection,client,configKey}=await poolRuntime(true);
  // A fixed primary key guarantees there is only one main launch across concurrent requests.
- await db().prepare("INSERT INTO tokens(id,recipient_type,wallet,name,symbol,description,handle,image,metadata_uri,status,created_at) VALUES(?,'dev',?,'Instara','INSTARA',?,'',?,?,'draft',?) ON CONFLICT(id) DO NOTHING").bind(MAIN_TOKEN_ID,wallet,b.description,b.image,b.metadataUri,Date.now()).run();
- const token=(await mainRecord())!;
+ await db().prepare("INSERT INTO tokens(id,recipient_type,wallet,name,symbol,description,handle,image,metadata_uri,status,created_at) VALUES(?,'dev',?,'Instara','INSTARA',?,'',?,?,'draft',?) ON CONFLICT(id) DO NOTHING").bind(MAIN_TOKEN_ID,wallet,b.description,b.image,'',Date.now()).run();
+ let token=(await mainRecord())!;
  if(!token||token.wallet!==wallet||token.status!=='draft')throw new AppError('The main token is already launched or has a pending launch.',409);
- await db().prepare("UPDATE tokens SET description=?,image=?,metadata_uri=? WHERE id=? AND status='draft'").bind(b.description,b.image,b.metadataUri,MAIN_TOKEN_ID).run();
+ token=await db().prepare("UPDATE tokens SET description=?,image=?,website=?,twitter=?,telegram=?,dev_buy_usd=?,revision=revision+1 WHERE id=? AND status='draft' AND revision=? RETURNING *").bind(b.description,b.image,b.website,b.twitter,b.telegram,String(b.devBuyUsd),MAIN_TOKEN_ID,token.revision||0).first<TokenRecord>() as TokenRecord;
+ if(!token)throw new AppError('The main launch changed. Refresh and try again.',409);
  const payer=new PublicKey(wallet),mint=Keypair.generate();
- const create=await client.creator.createPool({baseMint:mint.publicKey,name:'Instara',symbol:'INSTARA',uri:b.metadataUri,poolCreator:payer,payer,config:configKey});
+ const metadata=await createMetadata(token,mint.publicKey.toBase58(),appOrigin);
+ const create=await client.creator.createPoolWithFirstBuy({createPoolParam:{baseMint:mint.publicKey,name:'Instara',symbol:'INSTARA',uri:metadata.uri,poolCreator:payer,payer,config:configKey},firstBuyParam:await initialBuy(client,payer,b.devBuyUsd)});
+ token={...token,metadata_uri:metadata.uri};
  return persist(new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({units:600000}),...create.instructions),[mint],s,token,'main_launch',mint.publicKey,payer,connection);
 }
 export async function claimMain(s:Session){

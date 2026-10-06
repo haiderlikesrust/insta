@@ -4,7 +4,7 @@
 
 1. Set APP_ORIGIN, DEV_WALLET_ADDRESS (public address) and SOLANA_RPC_URL (mainnet). Sign into /admin with the dev wallet.
 2. Click **Create launch configuration** and approve the transaction. The fixed 2% / 20-to-250 SOL market-cap configuration is created on Meteora and saved in PostgreSQL after finality. This is a config account, not an API key or a custom program.
-3. Enable MAIN_LAUNCH_ENABLED when ready. Supply the permanent metadata/image URLs and launch INSTARA. Its mint is saved automatically. All main-token creator fees after Meteora's protocol share go directly to the dev wallet, without Instagram verification or the 10% deduction.
+3. Enable MAIN_LAUNCH_ENABLED when ready. Upload the coin image, optionally add social links and an initial dev buy in USD, then launch INSTARA. Metadata is generated automatically; a blank website uses its Instara token page. Its mint is saved automatically. All main-token creator fees after Meteora's protocol share go directly to the dev wallet, without Instagram verification or the 10% deduction.
 4. Click **Prepare creator claims** to create and save the shared transaction lookup table. Keep this table active; the dev wallet controls it. If a future route exceeds the packet limit, extend this table with the new accounts before retrying.
 5. Configure APIFY_API_TOKEN and BACKEND_WALLET_SECRET_KEY. Fund the dedicated backend wallet with SOL for network fees and rent. Test end to end before enabling LIVE_LAUNCHES_ENABLED.
 
