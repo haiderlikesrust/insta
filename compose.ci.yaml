@@ -1,0 +1,5 @@
+# Disposable local/CI override; production exposes only Dokploy's gateway.
+services:
+  gateway:
+    ports:
+      - "127.0.0.1:8080:80"

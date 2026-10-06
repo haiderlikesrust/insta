@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+const base='http://127.0.0.1:8080';
+const health=await fetch(base+'/api/health');
+assert.equal(health.status,200);
+assert.deepEqual(await health.json(),{ok:true,database:'postgres',liveLaunches:false});
+const page=await fetch(base);assert.equal(page.status,200);assert.match(await page.text(),/Instara/);
+assert.match(page.headers.get('content-security-policy'),/frame-ancestors 'none'/);
+const logo=await fetch(base+'/brand-logo.png');assert.equal(logo.status,200);assert.match(logo.headers.get('content-type'),/image\/png/);
+process.argv[2]=base;
+await import('./smoke.mjs');

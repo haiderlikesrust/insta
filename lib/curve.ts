@@ -1,7 +1,7 @@
 import { buildCurveWithMarketCap, ActivationType, BaseFeeMode, CollectFeeMode, MigrationFeeOption, MigrationOption, TokenAuthorityOption, TokenDecimal, TokenType, MigratedCollectFeeMode, DammV2DynamicFeeMode } from "@meteora-ag/dynamic-bonding-curve-sdk";
 export { ECONOMICS, usdTargets } from "./economics";
 import { ECONOMICS } from "./economics";
-export function buildFanfareCurve() {
+export function buildInstaraCurve() {
   return buildCurveWithMarketCap({
     token: { tokenType: TokenType.SPLToken, tokenBaseDecimal: TokenDecimal.SIX, tokenQuoteDecimal: TokenDecimal.NINE, tokenAuthorityOption: TokenAuthorityOption.Immutable, totalTokenSupply: ECONOMICS.supply, leftover: 0 },
     fee: { baseFeeParams: { baseFeeMode: BaseFeeMode.FeeSchedulerLinear, feeSchedulerParam: { startingFeeBps: 200, endingFeeBps: 200, numberOfPeriod: 0, totalDuration: 0 } }, dynamicFeeEnabled: false, collectFeeMode: CollectFeeMode.QuoteToken, creatorTradingFeePercentage: 100, poolCreationFee: 0, enableFirstSwapWithMinFee: false },

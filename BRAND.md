@@ -1,19 +1,11 @@
-# Fanfare
+# Instara
 
-Name: Fanfare. Idea: fans bringing attention and support to creators.
+Instara combines Insta with the idea of creator stars. Wordmark: lowercase instara, Manrope. Tagline: Their community. Their coin. Their fees.
 
-Wordmark: lowercase `fanfare`, Manrope bold/medium. Symbol: three ascending coral/violet ribbons forming a fan and subtle F. Palette: coral `#ea4474`, violet `#7855d9`, ink `#24212c`, paper `#fbfafd`. DM Sans for interface text. Tagline: “Their community. Their coin. Their fees.”
+The approved symbol shows two violet and coral figures whose interwoven ribbons suggest a creator meeting their community. Palette: coral #ea4474, violet #7855d9, ink #24212c, paper #fbfafd. DM Sans for interface text.
 
-Logo: `public/fanfare-logo.png`, 1254 × 1254, transparent PNG. Generated using the built-in image generation tool, not the API/CLI fallback.
+Final asset: public/brand-logo.png, transparent PNG. Generated with the built-in image tool. The user approved the symbol and requested a different name; the image contains no wordmark.
 
-Generation prompt:
+Original generation prompt, preserved verbatim:
 
-```text
-Use case: logo-brand
-Asset type: square transparent PNG standalone brand symbol for Fanfare, a platform where fans back creators.
-Primary request: Create ONE original bold cohesive mark using three rounded ascending folded ribbon or petal rays forming a subtle F and fan motif. Make the silhouette simple, confident, elegant, and immediately legible at 32px.
-Style/medium: flat vector-like crisp logo artwork with smooth rounded geometry and clean precise antialiased edges.
-Color palette: coral #ea4474 and saturated violet #7855d9, solid flat color regions only.
-Composition/framing: centered symbol fills approximately 80 percent of the square canvas. Genuinely transparent background and internal negative spaces.
-Constraints: standalone symbol only, no text, no wordmark, no lowercase r, no border, no watermark. No Instagram logo resemblance, no generic rocket, no 3D, no gradients, no shadows, no mockup. The three ascending rounded ribbons or petals must read as one cohesive fan-shaped brand mark.
-```
+Create a polished minimalist brand symbol for VEYRA, an Instagram creator coin launchpad. Logo mark only, absolutely no text or letters written beneath it. Form a distinctive abstract V from two flowing interlocked ribbons, suggesting a creator and their community meeting. Modern flat vector-like geometry rendered as a crisp high-resolution PNG, smooth carefully balanced curves, strong silhouette legible at 24 pixels. Violet #7855D9 and coral pink #EA4474, subtle restrained gradients within ribbons allowed. Centered isolated symbol with compact square composition and moderate padding. Genuinely transparent background, no white square, no checkerboard baked into image, no mockup, no drop shadow, no 3D, no Instagram glyph, no currency symbols.

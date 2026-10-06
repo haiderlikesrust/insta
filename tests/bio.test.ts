@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { assertBioProof, bioCode, parseProfile } from '../lib/bio-proof';
 import { startProfileRead, readProfileResult } from '../lib/profile-reader';
-const now=Date.now(),code='FANFARE-0123456789abcdef0123456789abcdef';
+const now=Date.now(),code='INSTARA-0123456789abcdef0123456789abcdef';
 const raw={id:'12345',username:'the_creator',biography:`Art and coffee\n${code}`,private:false,followersCount:1234};
 const c={account_id:'instagram-public:12345',username:'the_creator',code,expires_at:now+10000,phase:'checking',wallet:'wallet-A',session_hash:'session-A'};
 test('bio proof requires exact account, wallet, session, fresh nonce and unused challenge',()=>{
@@ -14,7 +14,7 @@ test('bio proof requires exact account, wallet, session, fresh nonce and unused 
 test('profile reader rejects ambiguous, private, missing and changed profiles',()=>{
  for(const value of [[],[raw,raw],[{...raw,private:true}],[{...raw,id:12345}],[{...raw,username:'other'}],[{...raw,biography:undefined}],[{error:'not_found'}]])assert.throws(()=>parseProfile(value,'the_creator'));
  assert.equal(parseProfile([raw],'the_creator').followers,1234);
- const a=bioCode(),b=bioCode();assert.match(a,/^FANFARE-[a-f0-9]{32}$/);assert.notEqual(a,b);
+ const a=bioCode(),b=bioCode();assert.match(a,/^INSTARA-[a-f0-9]{32}$/);assert.notEqual(a,b);
 });
 test('server reader uses a fresh bounded run and retrieves only its result',async()=>{
  const original=globalThis.fetch;const requests:{url:string;init:RequestInit|undefined}[]=[];

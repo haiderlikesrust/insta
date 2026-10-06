@@ -1,4 +1,4 @@
-# Fanfare
+# Instara
 
 An Instagram creator launchpad using Meteora Dynamic Bonding Curve and DAMM v2, with a custom Anchor escrow. The app is a working integration foundation; the mainnet escrow and profile-reading credentials still need deployment/configuration. Live transaction endpoints fail closed until configured and reviewed.
 
@@ -11,9 +11,11 @@ An Instagram creator launchpad using Meteora Dynamic Bonding Curve and DAMM v2, 
 - Initial fully diluted market cap: **20 SOL**. Graduation fully diluted market cap: **250 SOL**. The SDK computes a reserve threshold of approximately **55.120302302 SOL**, which is different from market cap. Solana integer rounding makes the initial implied cap approximately 20.0000007546 SOL.
 - Default supply: **1 billion tokens**, 6 decimals, immutable metadata authority, no creator token allocation. 100% of graduated liquidity is permanently locked for the creator vault. The pool continues trading after graduation.
 - All app prices/market caps are displayed in **USD**, converted from SOL using the user-specified `https://frontend-api-v3.pump.fun/sol-price` endpoint. The curve itself remains SOL-denominated. Stale/unavailable prices are marked, never replaced with invented values. Network fees/payout settlement remain in SOL.
-- GMGN charts use its documented embed at `https://www.gmgn.cc/kline/sol/{mint}`. Fanfare cannot override undocumented chart currency parameters; app valuation cards are USD. New token coverage depends on GMGN.
+- GMGN charts use its documented embed at `https://www.gmgn.cc/kline/sol/{mint}`. Instara cannot override undocumented chart currency parameters; app valuation cards are USD. New token coverage depends on GMGN.
 
 ## Run locally
+
+For production, follow [the Dokploy setup](docs/DOKPLOY.md) for **https://instara.xyz**. It uses Node, Nginx and PostgreSQL, matching Grailshot's deployment structure. The commands below are the optional local Cloudflare preview.
 
 Use Node 22.13+ (Node 24 LTS recommended), npm, and optionally Rust/Anchor for the contract.
 
@@ -70,7 +72,7 @@ Trading occurs through Meteora-compatible routes; this release links to GMGN and
 - `lib/curve.ts`, `lib/chain.ts`, `lib/escrow.ts`: fixed economics, Meteora transaction building, escrow instruction encoding.
 - `programs/reelmint/src/lib.rs`: Anchor escrow source (deployment placeholders).
 - `db/schema.ts`, `drizzle/`: durable records and schema migrations.
-- `public/fanfare-logo.png`: generated transparent brand symbol.
+- `public/brand-logo.png`: generated transparent brand symbol.
 
 ## Primary integration references
 
@@ -80,4 +82,4 @@ Trading occurs through Meteora-compatible routes; this release links to GMGN and
 - [Apify pricing](https://apify.com/pricing)
 - [GMGN chart embed](https://docs.gmgn.ai/index/cooperation-api-integrate-gmgn-price-chart)
 
-Fanfare is independent of Meta, Instagram, Meteora, and GMGN. Creator verification does not imply endorsement of a community token. Brand name availability has not been legally cleared.
+Instara is independent of Meta, Instagram, Meteora, and GMGN. Creator verification does not imply endorsement of a community token. Brand name availability has not been legally cleared.

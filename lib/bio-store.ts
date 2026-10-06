@@ -2,7 +2,7 @@ import { assertBioProof, type BioProfile } from './bio-proof';
 type BoundChallenge={id:string;account_id:string|null;username:string;code:string;expires_at:number;phase:string;wallet:string;session_hash:string};
 export function recipientWrites(p:BioProfile,now:number){return [
  {sql:"UPDATE creators SET username='former_'||id,verified_at=0,profile_at=0 WHERE username=? AND id!=?",args:[p.username,p.id]},
- {sql:"INSERT INTO creators(id,username,verified_at,profile_at,followers,biography,picture) VALUES(?,?,0,?,?,?,?) ON CONFLICT(id) DO UPDATE SET username=excluded.username,profile_at=excluded.profile_at,followers=excluded.followers,biography=excluded.biography,picture=excluded.picture",args:[p.id,p.username,now,p.followers,p.biography.replace(/FANFARE-[a-f0-9]{32}/g,'').trim(),p.picture]},
+ {sql:"INSERT INTO creators(id,username,verified_at,profile_at,followers,biography,picture) VALUES(?,?,0,?,?,?,?) ON CONFLICT(id) DO UPDATE SET username=excluded.username,profile_at=excluded.profile_at,followers=excluded.followers,biography=excluded.biography,picture=excluded.picture",args:[p.id,p.username,now,p.followers,p.biography.replace(/INSTARA-[a-f0-9]{32}/g,'').trim(),p.picture]},
 ];}
 export function verificationWrites(c:BoundChallenge,p:BioProfile,s:{wallet:string;token_hash:string},now:number){
  assertBioProof(c,p,s.wallet,s.token_hash,now);

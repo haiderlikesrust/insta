@@ -2,14 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Fanfare — Their community. Their coin. Their fees.",
-  description: "Launch community coins with creator fees locked to existing, verified Instagram accounts.",
-  other: {
-    "codex-preview": "development",
-  },
+  metadataBase: new URL('https://instara.xyz'),
+  title: "Instara — Their community. Their coin. Their fees.",
+  description: "Launch community coins for existing Instagram accounts. Creator fees stay locked until their owner verifies and claims.",
+  alternates: { canonical: '/' },
   icons: {
-    icon: "/fanfare-logo.png",
-    shortcut: "/fanfare-logo.png",
+    icon: "/brand-logo.png",
+    shortcut: "/brand-logo.png",
   },
 };
 

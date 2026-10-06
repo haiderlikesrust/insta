@@ -38,6 +38,13 @@ const localBindingConfig = {
 };
 
 export default defineConfig(async ({ command }) => {
+  if (process.env.INSTARA_RUNTIME === 'node') return {
+    plugins: [vinext()],
+    resolve: { alias: [
+      { find: /^cloudflare:workers$/, replacement: fileURLToPath(new URL('./lib/node-env.ts', import.meta.url)) },
+      { find: /^@coral-xyz\/anchor$/, replacement: fileURLToPath(new URL('./node_modules/@coral-xyz/anchor/dist/cjs/index.js', import.meta.url)) },
+    ] },
+  };
   // Use Miniflare's local Request.cf placeholder unless fetching is requested.
   process.env.CLOUDFLARE_CF_FETCH_ENABLED ??= "false";
   process.env.WRANGLER_SEND_METRICS ??= "false";

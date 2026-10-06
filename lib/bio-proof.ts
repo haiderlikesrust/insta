@@ -12,7 +12,7 @@ export function parseProfile(items: unknown, username: string): BioProfile {
   // Namespace public IDs separately from the retired Meta OAuth integration's scoped IDs.
   return { id: `instagram-public:${d.id}`, username:d.username, biography:d.biography, followers:d.followersCount ?? null, picture:d.profilePicUrl?.startsWith('https://') ? d.profilePicUrl : null, name:d.fullName || d.username };
 }
-export function bioCode() { return `FANFARE-${Array.from(crypto.getRandomValues(new Uint8Array(16)), b=>b.toString(16).padStart(2,'0')).join('')}`; }
+export function bioCode() { return `INSTARA-${Array.from(crypto.getRandomValues(new Uint8Array(16)), b=>b.toString(16).padStart(2,'0')).join('')}`; }
 export function assertBioProof(challenge: { account_id:string|null; username:string; code:string; expires_at:number; phase:string; wallet:string; session_hash:string }, profile:BioProfile, wallet:string, sessionHash:string, now=Date.now()) {
   if(challenge.phase !== 'checking' || challenge.expires_at <= now) throw new AppError("This code expired or was already used. Generate a new code.",409);
   if(challenge.wallet !== wallet || challenge.session_hash !== sessionHash) throw new AppError("This code belongs to another wallet session.",403);

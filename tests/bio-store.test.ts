@@ -6,7 +6,7 @@ import {verificationWrites,recipientWrites} from '../lib/bio-store';
 import {assertRecipient,assertClaim} from '../lib/domain';
 test('bio consumption is single-use and claimed badge follows immutable identity across handle reuse',()=>{
  const db=new DatabaseSync(':memory:');for(const file of readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())db.exec(readFileSync(`drizzle/${file}`,'utf8'));
- const now=Date.now(),code='FANFARE-0123456789abcdef0123456789abcdef';
+ const now=Date.now(),code='INSTARA-0123456789abcdef0123456789abcdef';
  const c={id:'proof1',account_id:'instagram-public:123',username:'creator',code,expires_at:now+10000,phase:'checking',wallet:'w1',session_hash:'s1'};
  db.prepare('INSERT INTO sessions(token_hash,wallet,expires_at) VALUES(?,?,?)').run('s1','w1',now+100000);
  const put=db.prepare('INSERT INTO bio_challenges(id,session_hash,wallet,username,account_id,code,expires_at,phase,created_at) VALUES(?,?,?,?,?,?,?,?,?)');

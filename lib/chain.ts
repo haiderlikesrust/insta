@@ -2,7 +2,7 @@ import { Connection, Keypair, PublicKey, Transaction, VersionedTransaction, Tran
 import { DynamicBondingCurveClient, DYNAMIC_BONDING_CURVE_PROGRAM_ID, deriveDbcPoolAddress, deriveDbcPoolAuthority, deriveDbcEventAuthority, deriveDammV2PoolAddress, DAMM_V2_MIGRATION_FEE_ADDRESS, getPriceFromSqrtPrice } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import { CpAmm, CP_AMM_PROGRAM_ID, derivePoolAuthority } from "@meteora-ag/cp-amm-sdk";
 import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction } from "@solana/spl-token";
-import { buildFanfareCurve, ECONOMICS } from "./curve";
+import { buildInstaraCurve, ECONOMICS } from "./curve";
 import { z } from "zod";
 import bs58 from "bs58";
 import { AppError, hash } from "./domain";
@@ -19,7 +19,7 @@ async function runtime() {
   if (verifier.publicKey.toBase58() !== e.VERIFIER_PUBLIC_KEY) throw new AppError("Verification authority configuration mismatch.", 503);
   const [account, dbc] = await connection.getMultipleAccountsInfo([program, DYNAMIC_BONDING_CURVE_PROGRAM_ID]); if (!account?.executable || !dbc?.executable) throw new AppError("Required on-chain programs are not deployed.", 503);
   const client = new DynamicBondingCurveClient(connection,"confirmed"), configKey = new PublicKey(e.METEORA_CONFIG_KEY!);
-  const onchain = await client.state.getPoolConfig(configKey), expected = buildFanfareCurve();
+  const onchain = await client.state.getPoolConfig(configKey), expected = buildInstaraCurve();
   if (!onchain || !onchain.quoteMint.equals(NATIVE_MINT) || !onchain.sqrtStartPrice.eq(expected.sqrtStartPrice) || !onchain.migrationQuoteThreshold.eq(expected.migrationQuoteThreshold) || onchain.creatorTradingFeePercentage !== 100 || onchain.migrationFeeOption !== 6 || onchain.creatorPermanentLockedLiquidityPercentage !== 100 || onchain.collectFeeMode !== 0 || onchain.migratedCollectFeeMode !== 0 || onchain.migratedPoolBaseFeeMode !== 0 || onchain.migratedCompoundingFeeBps !== 0 || onchain.migrationFeePercentage !== 0 || onchain.tokenUpdateAuthority !== 1 || !onchain.preMigrationTokenSupply.eq(expected.tokenSupply!.preMigrationTokenSupply) || !onchain.postMigrationTokenSupply.eq(expected.tokenSupply!.postMigrationTokenSupply) || onchain.migrationOption !== 1 || onchain.tokenType !== 0 || onchain.tokenDecimal !== 6 || onchain.migratedPoolFeeBps !== 200 || onchain.migratedDynamicFee !== 0 || onchain.poolFees.baseFee.cliffFeeNumerator.toString() !== '20000000' || onchain.poolFees.baseFee.firstFactor !== 0 || !onchain.poolFees.baseFee.secondFactor.isZero() || !onchain.poolFees.baseFee.thirdFactor.isZero() || onchain.poolFees.dynamicFee.initialized !== 0) throw new AppError("Meteora config differs from the fixed 2% / 20-to-250 curve. Launch blocked.",503);
   return { connection, program, verifier, client, configKey };
 }

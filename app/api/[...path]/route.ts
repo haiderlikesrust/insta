@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { PublicKey } from "@solana/web3.js";
 import { AppError, assertRecipient, assertClaim, draftSchema, hash, verifyWallet } from "@/lib/domain";
-import { db, session, origin, csrf, json, body, cookie, rateLimit, readiness, config } from "@/lib/server";
+import { db, session, origin, csrf, json, body, cookie, rateLimit, readiness, config, clientIp } from "@/lib/server";
 import { startBio, checkBio, bioStatus } from "@/lib/bio";
 import { startRecipient, recipientStatus } from "@/lib/recipient";
 import type { TokenRecord } from "@/lib/chain";
@@ -9,19 +9,20 @@ export const dynamic = "force-dynamic";
 const pathOf = (r: Request) => new URL(r.url).pathname.replace(/^\/api\//, "");
 async function handler(req: Request) {
   const path = pathOf(req), now = Date.now();
-  if (req.method === "POST") { csrf(req); await rateLimit(`ip:${req.headers.get("cf-connecting-ip") || "local"}`, 60); }
+  if (path === 'health' && req.method === 'GET') { await db().prepare('SELECT 1').first(); return json({ok:true,database:config().DATABASE_URL?'postgres':'d1',liveLaunches:readiness().live}); }
+  if (req.method === "POST") { csrf(req); await rateLimit(`ip:${clientIp(req)}`, 60); }
   if (path === "state" && req.method === "GET") {
     const s = await session(req, false);
-    const creators = await db().prepare("SELECT id, username, followers, biography, picture, claimed_at FROM creators WHERE profile_at > (strftime('%s','now') * 1000 - 900000) ORDER BY username LIMIT 200").all();
+    const creators = await db().prepare("SELECT id, username, followers, biography, picture, claimed_at FROM creators WHERE profile_at > ? ORDER BY username LIMIT 200").bind(now-900000).all();
     const tokens = await db().prepare("SELECT tokens.*, creators.claimed_at FROM tokens LEFT JOIN creators ON creators.id=tokens.creator_id WHERE tokens.status='launched' ORDER BY tokens.created_at DESC LIMIT 100").all();
     const drafts = s ? await db().prepare("SELECT * FROM tokens WHERE wallet = ? AND status IN ('draft','pending') ORDER BY created_at DESC LIMIT 100").bind(s.wallet).all() : { results: [] };
-    const pending = s ? await db().prepare("SELECT id AS intentId, signature FROM intents WHERE wallet=? AND status='submitted' ORDER BY created_at DESC LIMIT 1").bind(s.wallet).first() : null;
+    const pending = s ? await db().prepare('SELECT id AS "intentId", signature FROM intents WHERE wallet=? AND status=\'submitted\' ORDER BY created_at DESC LIMIT 1').bind(s.wallet).first() : null;
     const identity = s?.creator_id ? await db().prepare("SELECT id, username, followers, biography, picture FROM creators WHERE id = ?").bind(s.creator_id).first() : null;
     return json({ status: readiness(), creators: creators.results, tokens: tokens.results, drafts: drafts.results, wallet: s?.wallet, identity, pending });
   }
   if (path === "wallet/challenge" && req.method === "POST") {
     const { wallet } = z.object({ wallet: z.string().min(32).max(44) }).parse(await body(req)); new PublicKey(wallet); await rateLimit(`challenge:${wallet}`, 5);
-    const id = crypto.randomUUID(); const message = `Fanfare wallet verification\nOrigin: ${origin(req)}\nWallet: ${wallet}\nNonce: ${id}\nExpires: ${new Date(now + 300000).toISOString()}\nThis proves ownership. It does not transfer funds.`;
+    const id = crypto.randomUUID(); const message = `Instara wallet verification\nOrigin: ${origin(req)}\nWallet: ${wallet}\nNonce: ${id}\nExpires: ${new Date(now + 300000).toISOString()}\nThis proves ownership. It does not transfer funds.`;
     await db().prepare("INSERT INTO challenges (id,wallet,message,expires_at) VALUES (?,?,?,?)").bind(id, wallet, message, now + 300000).run(); return json({ id, message });
   }
   if (path === "wallet/verify" && req.method === "POST") {
@@ -64,6 +65,6 @@ async function handler(req: Request) {
   }
   throw new AppError("Not found.", 404);
 }
-async function safe(req: Request) { try { return await handler(req); } catch (e) { if (e instanceof AppError) return json({ error: e.message }, e.status); if (e instanceof z.ZodError) return json({ error: e.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ") }, 400); console.error("Fanfare request failed", e instanceof Error ? e.name : "UnknownError"); return json({ error: "The service is temporarily unavailable. Your input has been preserved." }, 503); } }
+async function safe(req: Request) { try { return await handler(req); } catch (e) { if (e instanceof AppError) return json({ error: e.message }, e.status); if (e instanceof z.ZodError) return json({ error: e.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ") }, 400); console.error("Instara request failed", e instanceof Error ? e.name : "UnknownError"); return json({ error: "The service is temporarily unavailable. Your input has been preserved." }, 503); } }
 export const GET = safe;
 export const POST = safe;
