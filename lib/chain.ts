@@ -13,6 +13,7 @@ import {versioned,validSignatures} from './transactions';
 import {createMetadata} from './token-metadata';
 import {initialBuy} from './initial-buy';
 import {assertMainnet} from './network';
+import {finalizedTransaction} from './finalized-transaction';
 export type TokenRecord = { revision?:number; description?:string; image?:string; website?:string; twitter?:string; telegram?:string; dev_buy_sol?:string; recipient_type?: string; id: string; wallet: string; name: string; symbol: string; creator_id: string | null; handle: string; metadata_uri: string; status: string; mint: string | null; vault: string | null };
 type Intent = { id: string; token_id: string; wallet: string; kind: string; message_hash: string; mint: string; vault: string; signature: string | null; status: string; last_valid_height: number };
 export async function setupRuntime(){
@@ -76,9 +77,8 @@ export async function confirm(s: Session, input: unknown) {
   const intent = await db().prepare("SELECT * FROM intents WHERE id=? AND wallet=?").bind(b.intentId,s.wallet).first<Intent>(); if (!intent || intent.signature !== b.signature) throw new AppError("Unknown transaction.",404);
   if(intent.kind==='claim')return (await import('./custodial-claims')).confirmClaim(intent.id);
   if(intent.kind.startsWith("main_"))assertDev(s,config().DEV_WALLET_ADDRESS);
-  const { connection } = await (['main_config','main_lookup'].includes(intent.kind)?setupRuntime():intent.kind.startsWith("main_")?poolRuntime(true):runtime()); const tx = await connection.getTransaction(b.signature,{ commitment: "finalized", maxSupportedTransactionVersion: 0 });
-  if (!tx) throw new AppError("Transaction is not finalized yet. Check confirmation again shortly.",409);
-  if (tx.meta?.err || !tx.meta) throw new AppError("The on-chain transaction failed. No launch or payout was recorded.",409);
+  const { connection } = await (['main_config','main_lookup'].includes(intent.kind)?setupRuntime():intent.kind.startsWith("main_")?poolRuntime(true):runtime()); const tx = await finalizedTransaction(connection,b.signature,intent.last_valid_height);
+  if (!tx) return {ok:false,kind:intent.kind,message:'Confirming on Solana automatically…'};
   if (await hash(tx.transaction.message.serialize()) !== intent.message_hash) throw new AppError("On-chain transaction does not match this request.",403);
   const statements = [db().prepare("UPDATE intents SET status='confirmed' WHERE id=?").bind(intent.id)];
   if (["launch","main_launch"].includes(intent.kind)) statements.push(db().prepare("UPDATE tokens SET status='launched',signature=?,launched_at=COALESCE(launched_at,?) WHERE id=? AND mint=? AND vault=?").bind(b.signature,tx.blockTime?tx.blockTime*1000:Date.now(),intent.token_id,intent.mint,intent.vault));
@@ -87,7 +87,7 @@ export async function confirm(s: Session, input: unknown) {
     const existing=config()[key];if(existing&&existing!==intent.mint)throw new AppError('A different deployment address is already configured. Resolve that conflict before confirmation.',409);
     statements.push(db().prepare('INSERT INTO deployment_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING').bind(key,intent.mint));
   }
-  await db().batch(statements); return { ok: true, kind: intent.kind };
+  await db().batch(statements); return { ok: true, kind: intent.kind, mint:intent.mint };
 }
 export async function market(token: TokenRecord) {
   const e = config(); if (!e.SOLANA_RPC_URL || !e.METEORA_CONFIG_KEY || !token.mint) throw new AppError("Live market data is not configured.",503);

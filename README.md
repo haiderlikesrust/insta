@@ -63,3 +63,7 @@ Instara is independent of Instagram, Meta, Meteora and GMGN. Verification is not
 Community coins can launch as soon as the Meteora configuration, RPC, Instagram reader, backend custody key and LIVE_LAUNCHES_ENABLED are configured. The INSTARA main token and claim lookup table are not launch prerequisites. Fees accrue under each coinâ€™s separate custody authority; new creator payouts remain unavailable until both buyback prerequisites are configured. Claims then use the existing 90% creator / 10% buy-and-burn flow.
 
 Dev-buy migration: historical `dev_buy_usd` values are retained for reference. New `dev_buy_sol` amounts default to zero; owners must re-enter any intended purchase in SOL. Stale clients submitting a nonzero USD amount are rejected.
+
+Submitted transactions are checked automatically while the launch page or admin page is open, including after reload. Only finalized, validated launches redirect to `/token/<mint>`. Configuration setup and claims finish in place; transient RPC errors retry with backoff. Confirmation uses a separate rate-limit bucket.
+
+Token pages show live creator fees from Meteora DBC and the creator’s DAMM v2 positions, with USD estimates at the current SOL price. Community claimed/paid/buyback totals count only completed settlements; account ownership is displayed separately. Main-token claimed totals use on-chain fee withdrawal metrics. Missing RPC/price data displays unavailable rather than zero.

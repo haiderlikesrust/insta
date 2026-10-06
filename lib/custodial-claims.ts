@@ -71,8 +71,8 @@ export async function settleClaim(id:string){
 }
 export async function confirmClaim(id:string){
  const result=await settleClaim(id);
- if(!result.ok)throw new AppError(result.stage==='buyback'?'Buyback submitted. Your payout will continue automatically after confirmation.':'Buyback confirmed. Burn and creator payout are awaiting confirmation.',409);
- return result;
+ if(!result.ok)return {ok:false,kind:'claim',message:result.stage==='buyback'?'Confirming the buyback automatically…':'Confirming the burn and creator payout automatically…'};
+ return {...result,kind:'claim'};
 }
 export async function settlePending(){
  const rows=await db().prepare("SELECT intents.id FROM intents JOIN settlements ON settlements.intent_id=intents.id WHERE kind='claim' AND status='submitted' ORDER BY settlements.last_attempt_at,intents.created_at LIMIT 5").all<{id:string}>();

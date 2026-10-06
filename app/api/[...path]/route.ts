@@ -50,6 +50,12 @@ async function handler(req: Request) {
   }
   if (path === "wallet/logout" && req.method === "POST") { const s = await session(req, false); if (s) await db().prepare("DELETE FROM sessions WHERE token_hash = ?").bind(s.token_hash).run(); return json({ ok: true }, 200, { "Set-Cookie": cookie(req, "", 0) }); }
   if (path.startsWith("market/") && req.method === "GET") { const id = z.string().uuid().parse(path.split('/')[1]); const token = await db().prepare("SELECT * FROM tokens WHERE id=? AND status='launched'").bind(id).first<TokenRecord>(); if (!token) throw new AppError("Coin not found.",404); const {market}=await import('@/lib/chain'); return json({market:await market(token)}); }
+  if(path.startsWith('fees/')&&req.method==='GET'){
+    const id=z.string().uuid().parse(path.split('/')[1]);
+    const token=await db().prepare("SELECT tokens.*,creators.claimed_at FROM tokens LEFT JOIN creators ON creators.id=tokens.creator_id WHERE tokens.id=? AND tokens.status='launched'").bind(id).first<TokenRecord&{claimed_at:number|null}>();
+    if(!token)throw new AppError('Coin not found.',404);
+    return json({fees:await (await import('@/lib/token-fees')).tokenFees(token)});
+  }
   const s = (await session(req))!;
   if(path==='media'&&req.method==='POST')return json(await (await import('@/lib/media')).uploadImage(req,s));
   if (path.startsWith('admin/')) {
@@ -80,7 +86,8 @@ async function handler(req: Request) {
     return json({ id });
   }
   if (["launch/prepare", "claim/prepare", "launch/submit", "launch/confirm", "launch/recover"].includes(path) && req.method === "POST") {
-    const chain = await import("@/lib/chain"); const b = await body(req); await rateLimit(`chain:${s.wallet}`, 10);
+    const chain = await import("@/lib/chain"); const b = await body(req);
+    await rateLimit(path === "launch/confirm" ? `confirmation:${s.wallet}` : `chain:${s.wallet}`, path === "launch/confirm" ? 60 : 10);
     if (path === "launch/submit") return json(await chain.submit(s, b));
     if (path === "launch/confirm") return json(await chain.confirm(s, b));
     if (path === "launch/recover") return json(await chain.recover(s, b));
