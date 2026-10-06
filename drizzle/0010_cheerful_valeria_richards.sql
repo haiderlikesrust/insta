@@ -1,0 +1,1 @@
+ALTER TABLE `tokens` ADD `dev_buy_sol` text DEFAULT '0' NOT NULL;

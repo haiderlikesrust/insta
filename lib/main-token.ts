@@ -49,11 +49,11 @@ export async function prepareMain(s:Session,input:unknown,appOrigin:string){
  await db().prepare("INSERT INTO tokens(id,recipient_type,wallet,name,symbol,description,handle,image,metadata_uri,status,created_at) VALUES(?,'dev',?,'Instara','INSTARA',?,'',?,?,'draft',?) ON CONFLICT(id) DO NOTHING").bind(MAIN_TOKEN_ID,wallet,b.description,b.image,'',Date.now()).run();
  let token=(await mainRecord())!;
  if(!token||token.wallet!==wallet||token.status!=='draft')throw new AppError('The main token is already launched or has a pending launch.',409);
- token=await db().prepare("UPDATE tokens SET description=?,image=?,website=?,twitter=?,telegram=?,dev_buy_usd=?,revision=revision+1 WHERE id=? AND status='draft' AND revision=? RETURNING *").bind(b.description,b.image,b.website,b.twitter,b.telegram,String(b.devBuyUsd),MAIN_TOKEN_ID,token.revision||0).first<TokenRecord>() as TokenRecord;
+ token=await db().prepare("UPDATE tokens SET description=?,image=?,website=?,twitter=?,telegram=?,dev_buy_sol=?,revision=revision+1 WHERE id=? AND status='draft' AND revision=? RETURNING *").bind(b.description,b.image,b.website,b.twitter,b.telegram,String(b.devBuySol),MAIN_TOKEN_ID,token.revision||0).first<TokenRecord>() as TokenRecord;
  if(!token)throw new AppError('The main launch changed. Refresh and try again.',409);
  const payer=new PublicKey(wallet),mint=Keypair.generate();
  const metadata=await createMetadata(token,mint.publicKey.toBase58(),appOrigin);
- const create=await client.creator.createPoolWithFirstBuy({createPoolParam:{baseMint:mint.publicKey,name:'Instara',symbol:'INSTARA',uri:metadata.uri,poolCreator:payer,payer,config:configKey},firstBuyParam:await initialBuy(client,payer,b.devBuyUsd)});
+ const create=await client.creator.createPoolWithFirstBuy({createPoolParam:{baseMint:mint.publicKey,name:'Instara',symbol:'INSTARA',uri:metadata.uri,poolCreator:payer,payer,config:configKey},firstBuyParam:await initialBuy(client,payer,b.devBuySol)});
  token={...token,metadata_uri:metadata.uri};
  return persist(new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({units:600000}),...create.instructions),[mint],s,token,'main_launch',mint.publicKey,payer,connection);
 }

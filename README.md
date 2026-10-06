@@ -39,7 +39,7 @@ Wallet challenges are single-use; sessions use HttpOnly/SameSite cookies. Writes
 
 Each confirmed mint has a public /token/<address> page with a GMGN chart, USD valuations, creator badge, contract address and social links. Explore sorts by newest, oldest or 24-hour USD volume from DEX Screener (unindexed coins show unavailable volume).
 
-Both launch forms accept image uploads and optional website, X, Telegram and USD dev-buy amounts. Images are compressed in the browser and stored in the database; launch metadata is generated automatically at an immutable content-addressed URL. The default metadata website is APP_ORIGIN/token/<mint>. These hosted assets depend on your domain and database backups; no external pinning API is needed. A dev buy is an atomic Meteora first purchase by the launching wallet, quoted against the initial curve with 1% slippage protection and a fresh SOL/USD conversion. Network/account creation costs are additional. Zero skips the purchase. This app links to GMGN for subsequent trading. No fake coins, balances, volume or earnings are displayed.
+Both launch forms accept image uploads and optional website, X, Telegram and SOL dev-buy amounts. Images are compressed in the browser and stored in the database; launch metadata is generated automatically at an immutable content-addressed URL. The default metadata website is APP_ORIGIN/token/<mint>. These hosted assets depend on your domain and database backups; no external pinning API is needed. A dev buy is an atomic Meteora first purchase by the launching wallet, quoted against the initial curve with 1% slippage protection. SOL amounts convert exactly to lamports, without a price feed. Network/account creation costs are additional. Zero skips the purchase. This app links to GMGN for subsequent trading. No fake coins, balances, volume or earnings are displayed.
 
 ## Files
 
@@ -61,3 +61,5 @@ Both launch forms accept image uploads and optional website, X, Telegram and USD
 Instara is independent of Instagram, Meta, Meteora and GMGN. Verification is not endorsement of a community coin.
 
 Community coins can launch as soon as the Meteora configuration, RPC, Instagram reader, backend custody key and LIVE_LAUNCHES_ENABLED are configured. The INSTARA main token and claim lookup table are not launch prerequisites. Fees accrue under each coin’s separate custody authority; new creator payouts remain unavailable until both buyback prerequisites are configured. Claims then use the existing 90% creator / 10% buy-and-burn flow.
+
+Dev-buy migration: historical `dev_buy_usd` values are retained for reference. New `dev_buy_sol` amounts default to zero; owners must re-enter any intended purchase in SOL. Stale clients submitting a nonzero USD amount are rejected.

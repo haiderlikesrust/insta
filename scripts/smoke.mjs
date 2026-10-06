@@ -24,9 +24,9 @@ const upload=await localFetch(base+'/api/media',{method:'POST',headers:{Origin:b
 const image=await fetch(base+asset.image);assert.equal(image.status,200);assert.equal(image.headers.get('content-type'),'image/png');assert.deepEqual(Buffer.from(await image.arrayBuffer()),png);
 const badImage=await localFetch(base+'/api/media',{method:'POST',headers:{Origin:base,Cookie:cookie,'Content-Type':'image/png'},body:'<svg onload="alert(1)"></svg>'});assert.equal(badImage.status,400);
 const large=await localFetch(base+'/api/media',{method:'POST',headers:{Origin:base,Cookie:cookie,'Content-Type':'image/png'},body:Buffer.alloc(1024*1024+1)});assert.equal(large.status,413);
-const draft=await call('drafts',{name:'Local QA draft',symbol:'LOCALQA',handle:'instara_qa_missing',description:'Local-only security test',image:asset.image,twitter:'https://x.com/instaraxyz',devBuyUsd:'12.34'});assert.equal(draft.status,200);
+const draft=await call('drafts',{name:'Local QA draft',symbol:'LOCALQA',handle:'instara_qa_missing',description:'Local-only security test',image:asset.image,twitter:'https://x.com/instaraxyz',devBuySol:'12.34'});assert.equal(draft.status,200);
 const loaded=await call('state');assert.ok(loaded.data.drafts.some(d=>d.id===draft.data.id));
-const saved=loaded.data.drafts.find(d=>d.id===draft.data.id);assert.equal(saved.dev_buy_usd,'12.34');assert.equal(saved.twitter,'https://x.com/instaraxyz');assert.equal(saved.metadata_uri,'');assert.equal(saved.website,'');
+const saved=loaded.data.drafts.find(d=>d.id===draft.data.id);assert.equal(saved.dev_buy_sol,'12.34');assert.equal(saved.twitter,'https://x.com/instaraxyz');assert.equal(saved.metadata_uri,'');assert.equal(saved.website,'');
 assert.equal((await call('volumes')).status,200);assert.equal((await call('token/'+k.publicKey.toBase58())).status,404);
 assert.equal((await fetch(base+'/token/'+k.publicKey.toBase58())).status,404);
 assert.equal((await call('bio/status',{})).data.challenge,null);

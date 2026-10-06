@@ -11,9 +11,9 @@ import {sortCoins} from '../lib/coin-sort';
 import {pairVolumes} from '../lib/volume';
 import {versioned} from '../lib/transactions';
 
-test('USD initial buy validation rejects negative, nonfinite and excessive precision; zero skips price and purchase',async()=>{
- for(const value of [-1,Infinity,NaN,'1.234','-5','1e5',100001])assert.throws(()=>devBuySchema.parse(value));
- assert.equal(buyLamports(25,100).toString(),'250000000');assert.throws(()=>buyLamports(1,0));
+test('SOL initial buy validates precision, converts exactly and skips zero purchases',async()=>{
+ for(const value of [-1,Infinity,NaN,'1.2345678910','-5','1e5','100001'])assert.throws(()=>devBuySchema.parse(value));
+ assert.equal(buyLamports('0.25').toString(),'250000000');assert.equal(buyLamports('0.000000001').toString(),'1');assert.equal(buyLamports('1.234567891').toString(),'1234567891');assert.equal(buyLamports('.5').toString(),'500000000');
  assert.equal(await initialBuy({} as any,Keypair.generate().publicKey,''),undefined);
 });
 test('generated metadata uses the actual mint for its default website and preserves explicit socials',()=>{
@@ -33,7 +33,7 @@ test('SDK first buy quotes protected output and keeps buyer separate from the cr
  const cfg={...buildInstaraCurve(),quoteMint:NATIVE_MINT};
  (client.creator as any).getPoolConfigForNewPool=async()=>cfg;
  connection.getAccountInfo=async(key)=>key.equals(NATIVE_MINT)?{owner:TOKEN_PROGRAM_ID,data:Buffer.alloc(82),executable:false,lamports:1,rentEpoch:0}:null;
- const firstBuy=quoteInitialBuy(client,buyer.publicKey,buyLamports(25,100));assert.ok(firstBuy.minimumAmountOut.gtn(0));assert.equal(firstBuy.receiver.toBase58(),buyer.publicKey.toBase58());assert.throws(()=>quoteInitialBuy(client,buyer.publicKey,buyLamports(100000,1)));
+ const firstBuy=quoteInitialBuy(client,buyer.publicKey,buyLamports('0.25'));assert.ok(firstBuy.minimumAmountOut.gtn(0));assert.equal(firstBuy.receiver.toBase58(),buyer.publicKey.toBase58());assert.throws(()=>quoteInitialBuy(client,buyer.publicKey,buyLamports('100000')));
  for(const creator of [buyer.publicKey,authority.publicKey]){
  const create=await client.creator.createPoolWithFirstBuy({createPoolParam:{baseMint:mint.publicKey,name:'Instara',symbol:'INSTARA',uri:'https://instara.xyz/api/metadata/'+'a'.repeat(64),poolCreator:creator,payer:buyer.publicKey,config},firstBuyParam:firstBuy});
  const tx=new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({units:600000}),...create.instructions);
@@ -45,4 +45,11 @@ test('SDK first buy quotes protected output and keeps buyer separate from the cr
  const signed=await versioned(connection,tx,buyer.publicKey,Keypair.generate().publicKey.toBase58(),table.key.toBase58(),[mint,...(required.has(authority.publicKey.toBase58())?[authority]:[])]);assert.ok(signed.serialize().length<=1232);
  console.log('First buy transaction with table:',creator.equals(buyer.publicKey)?'admin':'community',signed.serialize().length);
  }
+});
+
+test('legacy USD amounts cannot silently become SOL amounts',()=>{
+ const draft={name:'Coin',symbol:'COIN',handle:'creator',description:'',image:''};
+ assert.throws(()=>draftSchema.parse({...draft,devBuyUsd:'25'}),/now in SOL/);
+ assert.equal(draftSchema.parse({...draft,devBuyUsd:'0'}).devBuySol,'0');
+ assert.equal(draftSchema.parse({...draft,devBuySol:'0.25'}).devBuySol,'0.25');
 });

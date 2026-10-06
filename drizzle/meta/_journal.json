@@ -71,6 +71,13 @@
       "when": 1791326848609,
       "tag": "0009_magical_maestro",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791328374533,
+      "tag": "0010_cheerful_valeria_richards",
+      "breakpoints": true
     }
   ]
 }

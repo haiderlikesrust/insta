@@ -12,12 +12,13 @@ import {NATIVE_MINT} from "./solana";
 import {versioned,validSignatures} from './transactions';
 import {createMetadata} from './token-metadata';
 import {initialBuy} from './initial-buy';
-export type TokenRecord = { revision?:number; description?:string; image?:string; website?:string; twitter?:string; telegram?:string; dev_buy_usd?:string; recipient_type?: string; id: string; wallet: string; name: string; symbol: string; creator_id: string | null; handle: string; metadata_uri: string; status: string; mint: string | null; vault: string | null };
+import {assertMainnet} from './network';
+export type TokenRecord = { revision?:number; description?:string; image?:string; website?:string; twitter?:string; telegram?:string; dev_buy_sol?:string; recipient_type?: string; id: string; wallet: string; name: string; symbol: string; creator_id: string | null; handle: string; metadata_uri: string; status: string; mint: string | null; vault: string | null };
 type Intent = { id: string; token_id: string; wallet: string; kind: string; message_hash: string; mint: string; vault: string; signature: string | null; status: string; last_valid_height: number };
 export async function setupRuntime(){
  const e=config(); if(e.SOLANA_NETWORK !== "mainnet-beta"||!e.SOLANA_RPC_URL)throw new AppError("Configure your mainnet RPC before creating the launch configuration.",503);
  const connection=new Connection(e.SOLANA_RPC_URL!,"confirmed");
- if(await connection.getGenesisHash() !== "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")throw new AppError("RPC network mismatch.",503);
+ await assertMainnet(connection);
  return {connection,client:new DynamicBondingCurveClient(connection,'confirmed')};
 }
 export async function poolRuntime(main = false) {
@@ -47,7 +48,7 @@ export async function persist(tx: Transaction, signers: Keypair[], s: Session, t
 export async function prepareLaunch(s:Session,token:TokenRecord,appOrigin:string){
  const {connection,client,configKey,master}=await runtime(),mint=Keypair.generate(),payer=new PublicKey(s.wallet),authority=feeWallet(master,mint.publicKey);
  const metadata=await createMetadata(token,mint.publicKey.toBase58(),appOrigin);
- const create=await client.creator.createPoolWithFirstBuy({createPoolParam:{baseMint:mint.publicKey,name:token.name,symbol:token.symbol,uri:metadata.uri,poolCreator:authority.publicKey,payer,config:configKey},firstBuyParam:await initialBuy(client,payer,token.dev_buy_usd)});
+ const create=await client.creator.createPoolWithFirstBuy({createPoolParam:{baseMint:mint.publicKey,name:token.name,symbol:token.symbol,uri:metadata.uri,poolCreator:authority.publicKey,payer,config:configKey},firstBuyParam:await initialBuy(client,payer,token.dev_buy_sol)});
  token={...token,metadata_uri:metadata.uri};
  const tx=new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({units:600000}),...create.instructions);
  // The fee authority only signs if Meteora requires it; these launch instructions cannot spend its balance.
