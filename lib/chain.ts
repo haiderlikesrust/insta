@@ -16,7 +16,7 @@ import {assertMainnet} from './network';
 import {finalizedTransaction,TransactionOutcomeError} from './finalized-transaction';
 import {rebroadcast} from './rebroadcast';
 export type TokenRecord = { revision?:number; description?:string; image?:string; website?:string; twitter?:string; telegram?:string; dev_buy_sol?:string; recipient_type?: string; id: string; wallet: string; name: string; symbol: string; creator_id: string | null; handle: string; metadata_uri: string; status: string; mint: string | null; vault: string | null };
-type Intent = { id: string; token_id: string; wallet: string; kind: string; message_hash: string; mint: string; vault: string; signature: string | null; status: string; last_valid_height: number; signed_transaction?:string|null };
+type Intent = { id: string; token_id: string; wallet: string; kind: string; message_hash: string; mint: string; vault: string; signature: string | null; status: string; last_valid_height: number; signed_transaction?:string|null; prepared_transaction?:string|null; submitted_message_hash?:string|null };
 export async function setupRuntime(){
  const e=config(); if(e.SOLANA_NETWORK !== "mainnet-beta"||!e.SOLANA_RPC_URL)throw new AppError("Configure your mainnet RPC before creating the launch configuration.",503);
  const connection=new Connection(e.SOLANA_RPC_URL!,"confirmed");
@@ -44,7 +44,7 @@ export async function persist(tx: Transaction, signers: Keypair[], s: Session, t
   const simulation = await connection.simulateTransaction(signed, { sigVerify: false, replaceRecentBlockhash: false, commitment: "confirmed" });
   if (simulation.value.err) throw new AppError("Transaction simulation failed. No funds were submitted; check wallet funding and pool configuration.",409);
   if (["launch","main_launch"].includes(kind)) { const locked = await db().prepare("UPDATE tokens SET status='pending',mint=?,vault=?,metadata_uri=?,website=? WHERE id=? AND wallet=? AND status='draft' AND revision=? RETURNING id").bind(mint.toBase58(),vault.toBase58(),token.metadata_uri,token.website||'',token.id,s.wallet,token.revision||0).first(); if (!locked) throw new AppError("This draft changed or already has a pending launch. Refresh and try again.", 409); }
-  try { await db().prepare("INSERT INTO intents (id,token_id,wallet,kind,message_hash,mint,vault,status,last_valid_height,created_at) VALUES (?,?,?,?,?,?,?,'prepared',?,?)").bind(id,token.id,s.wallet,kind,await hash(signed.message.serialize()),mint.toBase58(),vault.toBase58(),latest.lastValidBlockHeight,Date.now()).run(); }
+  try { await db().prepare("INSERT INTO intents (id,token_id,wallet,kind,message_hash,mint,vault,status,last_valid_height,created_at,prepared_transaction) VALUES (?,?,?,?,?,?,?,'prepared',?,?,?)").bind(id,token.id,s.wallet,kind,await hash(signed.message.serialize()),mint.toBase58(),vault.toBase58(),latest.lastValidBlockHeight,Date.now(),serialized.toString("base64")).run(); }
   catch (e) { if (["launch","main_launch"].includes(kind)) await db().prepare("UPDATE tokens SET status='draft',mint=NULL,vault=NULL WHERE id=? AND status='pending' AND mint=?").bind(token.id,mint.toBase58()).run(); throw e; }
   return { intentId: id, transaction: serialized.toString("base64"), mint: mint.toBase58(), vault: vault.toBase58(), lastValidBlockHeight: latest.lastValidBlockHeight };
 }
@@ -66,10 +66,10 @@ export async function submit(s: Session, input: unknown) {
   if (intent.signature) return { signature: intent.signature };
   if(intent.kind.startsWith("main_"))assertDev(s,config().DEV_WALLET_ADDRESS);
   const { connection } = await (['main_config','main_lookup'].includes(intent.kind)?setupRuntime():intent.kind.startsWith("main_")?poolRuntime(true,intent.kind!=='main_claim'):runtime()); const tx = VersionedTransaction.deserialize(Buffer.from(b.transaction,"base64"));
-  await assertApprovedTransaction(tx,s.wallet,intent.message_hash);
+  const submittedHash=await assertApprovedTransaction(tx,s.wallet,intent.message_hash,intent.kind==='main_claim'?intent.prepared_transaction:null);
   if (await connection.getBlockHeight("confirmed") > intent.last_valid_height) throw new AppError("This transaction expired. Recover the pending draft before preparing a replacement.",409);
   // Store the deterministic signature BEFORE network submission so a timeout cannot hide a landed transaction.
-  const signature = bs58.encode(tx.signatures[0]); await db().prepare("UPDATE intents SET signature=?,signed_transaction=?,last_broadcast_at=?,status='submitted' WHERE id=? AND signature IS NULL AND status='prepared'").bind(signature,Buffer.from(tx.serialize()).toString('base64'),Date.now(),intent.id).run();
+  const signature = bs58.encode(tx.signatures[0]); await db().prepare("UPDATE intents SET signature=?,signed_transaction=?,submitted_message_hash=?,last_broadcast_at=?,status='submitted' WHERE id=? AND signature IS NULL AND status='prepared'").bind(signature,Buffer.from(tx.serialize()).toString('base64'),submittedHash,Date.now(),intent.id).run();
   const stored=await db().prepare('SELECT signature,status FROM intents WHERE id=?').bind(intent.id).first<{signature:string|null;status:string}>();
   if(stored?.signature!==signature||stored.status!=='submitted')throw new AppError('This transaction is no longer active. Refresh before trying again.',409);
   try { await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, preflightCommitment:'confirmed', maxRetries: 3 }); }
@@ -92,7 +92,7 @@ export async function confirm(s: Session, input: unknown) {
    await rebroadcast(intent,connection,async()=>!!await db().prepare("UPDATE intents SET last_broadcast_at=? WHERE id=? AND status='submitted' AND last_broadcast_at<? RETURNING id").bind(Date.now(),intent.id,Date.now()-15000).first());
    return {ok:false,kind:intent.kind,message:'Confirming on Solana automatically…'};
   }
-  if (await hash(tx.transaction.message.serialize()) !== intent.message_hash) throw new AppError("On-chain transaction does not match this request.",403);
+  if (await hash(tx.transaction.message.serialize()) !== (intent.submitted_message_hash||intent.message_hash)) throw new AppError("On-chain transaction does not match this request.",403);
   const statements = [db().prepare("UPDATE intents SET status='confirmed' WHERE id=?").bind(intent.id)];
   if (["launch","main_launch"].includes(intent.kind)) statements.push(db().prepare("UPDATE tokens SET status='launched',signature=?,launched_at=COALESCE(launched_at,?) WHERE id=? AND mint=? AND vault=?").bind(b.signature,tx.blockTime?tx.blockTime*1000:Date.now(),intent.token_id,intent.mint,intent.vault));
   if(['main_config','main_launch','main_lookup'].includes(intent.kind)){

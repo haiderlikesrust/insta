@@ -44,9 +44,9 @@ test('explicit priority fees survive wallet signing; fee edits and invalid signa
  const signed=VersionedTransaction.deserialize(prepared.serialize());signed.sign([payer]);
  await assertApprovedTransaction(signed,payer.publicKey.toBase58(),expected);
  const editedFee=build(20000);editedFee.sign([payer]);
- await assert.rejects(assertApprovedTransaction(editedFee,payer.publicKey.toBase58(),expected),/wallet changed/);
+ await assert.rejects(assertApprovedTransaction(editedFee,payer.publicKey.toBase58(),expected),/changed beyond/);
  const redirected=build(10000,Keypair.generate().publicKey);redirected.sign([payer]);
- await assert.rejects(assertApprovedTransaction(redirected,payer.publicKey.toBase58(),expected),/wallet changed/);
+ await assert.rejects(assertApprovedTransaction(redirected,payer.publicKey.toBase58(),expected),/changed beyond/);
  await assert.rejects(assertApprovedTransaction(prepared,payer.publicKey.toBase58(),expected),/missing or invalid/);
  await assert.rejects(assertApprovedTransaction(signed,recipient.toBase58(),expected),/different wallet/);
 });
