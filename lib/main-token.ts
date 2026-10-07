@@ -60,9 +60,11 @@ export async function prepareMain(s:Session,input:unknown,appOrigin:string){
 export async function claimMain(s:Session){
  const wallet=assertDev(s,config().DEV_WALLET_ADDRESS),token=await mainRecord();
  if(!token||token.status!=='launched'||token.wallet!==wallet||!token.mint)throw new AppError('No main-token fees are available for this dev wallet.',409);
- const {connection,client,configKey}=await poolRuntime(true),payer=new PublicKey(wallet),mint=new PublicKey(token.mint),poolKey=deriveDbcPoolAddress(NATIVE_MINT,mint,configKey),pool=await client.state.getPool(poolKey);
+ const {connection,client,configKey}=await poolRuntime(true,false),payer=new PublicKey(wallet),mint=new PublicKey(token.mint),poolKey=deriveDbcPoolAddress(NATIVE_MINT,mint,configKey),pool=await client.state.getPool(poolKey);
  if(!pool||!pool.poolState.creator.equals(payer))throw new AppError('Main-token fee authority mismatch.',403);
- const tx=new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({units:700000}));
+ // Specify both budget fields before hashing/signing so wallets do not need to add a priority fee.
+ // 700,000 CU at 10,000 micro-lamports costs at most 7,000 lamports in priority fees.
+ const tx=new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({units:700000}),ComputeBudgetProgram.setComputeUnitPrice({microLamports:10000}));
  if(!pool.poolState.creatorQuoteFee.isZero())tx.add(...(await client.creator.claimCreatorTradingFee({creator:payer,payer,pool:poolKey,maxBaseAmount:new BN(0),maxQuoteAmount:new BN('18446744073709551615')})).instructions);
  if(pool.poolState.isMigrated){
   const amm=new CpAmm(connection),poolAddress=deriveDammV2PoolAddress(DAMM_V2_MIGRATION_FEE_ADDRESS[6],mint,NATIVE_MINT),p=await amm.fetchPoolState(poolAddress);
@@ -72,7 +74,7 @@ export async function claimMain(s:Session){
    tx.add(...fee.instructions);
   }
  }
- if(tx.instructions.length===1)throw new AppError('No fees have accumulated yet.',409);
+ if(tx.instructions.length===2)throw new AppError('No fees have accumulated yet.',409);
  return persist(tx,[],s,token,'main_claim',mint,payer,connection);
 }
 

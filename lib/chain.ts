@@ -9,21 +9,23 @@ import bs58 from "bs58";
 import { AppError, hash } from "./domain";
 import { config, db, readiness, type Session } from "./server";
 import {NATIVE_MINT} from "./solana";
-import {versioned,validSignatures} from './transactions';
+import {versioned,assertApprovedTransaction} from './transactions';
 import {createMetadata} from './token-metadata';
 import {initialBuy} from './initial-buy';
 import {assertMainnet} from './network';
-import {finalizedTransaction} from './finalized-transaction';
+import {finalizedTransaction,TransactionOutcomeError} from './finalized-transaction';
+import {rebroadcast} from './rebroadcast';
 export type TokenRecord = { revision?:number; description?:string; image?:string; website?:string; twitter?:string; telegram?:string; dev_buy_sol?:string; recipient_type?: string; id: string; wallet: string; name: string; symbol: string; creator_id: string | null; handle: string; metadata_uri: string; status: string; mint: string | null; vault: string | null };
-type Intent = { id: string; token_id: string; wallet: string; kind: string; message_hash: string; mint: string; vault: string; signature: string | null; status: string; last_valid_height: number };
+type Intent = { id: string; token_id: string; wallet: string; kind: string; message_hash: string; mint: string; vault: string; signature: string | null; status: string; last_valid_height: number; signed_transaction?:string|null };
 export async function setupRuntime(){
  const e=config(); if(e.SOLANA_NETWORK !== "mainnet-beta"||!e.SOLANA_RPC_URL)throw new AppError("Configure your mainnet RPC before creating the launch configuration.",503);
  const connection=new Connection(e.SOLANA_RPC_URL!,"confirmed");
  await assertMainnet(connection);
  return {connection,client:new DynamicBondingCurveClient(connection,'confirmed')};
 }
-export async function poolRuntime(main = false) {
- if (!readiness(main).live) throw new AppError("Live transactions are not enabled.", 503);
+export async function poolRuntime(main = false, requireLaunchEnabled = true) {
+ if (requireLaunchEnabled&&!readiness(main).live) throw new AppError("Live transactions are not enabled.", 503);
+ if(!config().METEORA_CONFIG_KEY)throw new AppError('The launch configuration is missing.',503);
  const e=config(),{connection}=await setupRuntime();
   const client = new DynamicBondingCurveClient(connection,"confirmed"), configKey = new PublicKey(e.METEORA_CONFIG_KEY!);
   const onchain = await client.state.getPoolConfig(configKey), expected = buildInstaraCurve();
@@ -63,12 +65,14 @@ export async function submit(s: Session, input: unknown) {
   if(intent.kind==='claim')throw new AppError('Claim transactions are submitted by the backend.',403);
   if (intent.signature) return { signature: intent.signature };
   if(intent.kind.startsWith("main_"))assertDev(s,config().DEV_WALLET_ADDRESS);
-  const { connection } = await (['main_config','main_lookup'].includes(intent.kind)?setupRuntime():intent.kind.startsWith("main_")?poolRuntime(true):runtime()); const tx = VersionedTransaction.deserialize(Buffer.from(b.transaction,"base64"));
-  if (await hash(tx.message.serialize()) !== intent.message_hash || tx.message.staticAccountKeys[0]?.toBase58() !== s.wallet || !validSignatures(tx)) throw new AppError("The signed transaction differs from the approved request.",403);
+  const { connection } = await (['main_config','main_lookup'].includes(intent.kind)?setupRuntime():intent.kind.startsWith("main_")?poolRuntime(true,intent.kind!=='main_claim'):runtime()); const tx = VersionedTransaction.deserialize(Buffer.from(b.transaction,"base64"));
+  await assertApprovedTransaction(tx,s.wallet,intent.message_hash);
   if (await connection.getBlockHeight("confirmed") > intent.last_valid_height) throw new AppError("This transaction expired. Recover the pending draft before preparing a replacement.",409);
   // Store the deterministic signature BEFORE network submission so a timeout cannot hide a landed transaction.
-  const signature = bs58.encode(tx.signatures[0]); await db().prepare("UPDATE intents SET signature=?,status='submitted' WHERE id=? AND signature IS NULL").bind(signature,intent.id).run();
-  try { await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 }); }
+  const signature = bs58.encode(tx.signatures[0]); await db().prepare("UPDATE intents SET signature=?,signed_transaction=?,last_broadcast_at=?,status='submitted' WHERE id=? AND signature IS NULL AND status='prepared'").bind(signature,Buffer.from(tx.serialize()).toString('base64'),Date.now(),intent.id).run();
+  const stored=await db().prepare('SELECT signature,status FROM intents WHERE id=?').bind(intent.id).first<{signature:string|null;status:string}>();
+  if(stored?.signature!==signature||stored.status!=='submitted')throw new AppError('This transaction is no longer active. Refresh before trying again.',409);
+  try { await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, preflightCommitment:'confirmed', maxRetries: 3 }); }
   catch { return { signature, uncertain: true }; }
   return { signature };
 }
@@ -77,8 +81,17 @@ export async function confirm(s: Session, input: unknown) {
   const intent = await db().prepare("SELECT * FROM intents WHERE id=? AND wallet=?").bind(b.intentId,s.wallet).first<Intent>(); if (!intent || intent.signature !== b.signature) throw new AppError("Unknown transaction.",404);
   if(intent.kind==='claim')return (await import('./custodial-claims')).confirmClaim(intent.id);
   if(intent.kind.startsWith("main_"))assertDev(s,config().DEV_WALLET_ADDRESS);
-  const { connection } = await (['main_config','main_lookup'].includes(intent.kind)?setupRuntime():intent.kind.startsWith("main_")?poolRuntime(true):runtime()); const tx = await finalizedTransaction(connection,b.signature,intent.last_valid_height);
-  if (!tx) return {ok:false,kind:intent.kind,message:'Confirming on Solana automatically…'};
+  const { connection } = await setupRuntime();
+  let tx;
+  try{tx=await finalizedTransaction(connection,b.signature,intent.last_valid_height);}catch(e){
+   if(intent.kind!=='main_claim'||!(e instanceof TransactionOutcomeError))throw e;
+   await db().prepare("UPDATE intents SET status=? WHERE id=? AND status IN ('prepared','submitted')").bind(e.outcome,intent.id).run();
+   return {ok:false,status:e.outcome,kind:intent.kind,message:`The dev-fee claim ${e.outcome==='expired'?'expired before landing':'failed on Solana'}. No fees were paid by this transaction. Click Claim dev fees to approve a new attempt.`};
+  }
+  if (!tx){
+   await rebroadcast(intent,connection,async()=>!!await db().prepare("UPDATE intents SET last_broadcast_at=? WHERE id=? AND status='submitted' AND last_broadcast_at<? RETURNING id").bind(Date.now(),intent.id,Date.now()-15000).first());
+   return {ok:false,kind:intent.kind,message:'Confirming on Solana automatically…'};
+  }
   if (await hash(tx.transaction.message.serialize()) !== intent.message_hash) throw new AppError("On-chain transaction does not match this request.",403);
   const statements = [db().prepare("UPDATE intents SET status='confirmed' WHERE id=?").bind(intent.id)];
   if (["launch","main_launch"].includes(intent.kind)) statements.push(db().prepare("UPDATE tokens SET status='launched',signature=?,launched_at=COALESCE(launched_at,?) WHERE id=? AND mint=? AND vault=?").bind(b.signature,tx.blockTime?tx.blockTime*1000:Date.now(),intent.token_id,intent.mint,intent.vault));

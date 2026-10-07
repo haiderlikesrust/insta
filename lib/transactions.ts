@@ -14,3 +14,9 @@ export async function versioned(connection:Connection,tx:Transaction,payer:Publi
  return result;
 }
 export function validSignatures(tx:VersionedTransaction){const message=tx.message.serialize();return tx.signatures.length===tx.message.header.numRequiredSignatures&&tx.signatures.every((s,i)=>nacl.sign.detached.verify(message,s,tx.message.staticAccountKeys[i].toBytes()));}
+export async function assertApprovedTransaction(tx:VersionedTransaction,wallet:string,messageHash:string){
+ const {hash}=await import('./domain');
+ if(tx.message.staticAccountKeys[0]?.toBase58()!==wallet)throw new AppError('The transaction uses a different wallet. Reconnect the authorized account.',403);
+ if(await hash(tx.message.serialize())!==messageHash)throw new AppError('Your wallet changed the prepared transaction. Retry with the app-provided network fee unchanged. No transaction was submitted.',403);
+ if(!validSignatures(tx))throw new AppError('The wallet returned a missing or invalid transaction signature. Reconnect and approve a fresh request. No transaction was submitted.',403);
+}

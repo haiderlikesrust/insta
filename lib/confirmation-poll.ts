@@ -1,5 +1,5 @@
 export type PendingTransaction={intentId:string;signature:string};
-export type ConfirmationResult={ok:boolean;kind?:string;mint?:string;message?:string};
+export type ConfirmationResult={ok:boolean;status?:string;kind?:string;mint?:string;message?:string};
 export class ConfirmationError extends Error{constructor(message:string,public retryable=false){super(message);}}
 export function confirmationDestination(result:ConfirmationResult){
  if(result.ok&&['launch','main_launch'].includes(result.kind||'')&&/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(result.mint||''))return `/token/${result.mint}`;
@@ -31,7 +31,7 @@ export async function pollConfirmation(pending:PendingTransaction,signal:AbortSi
   let delay=4000;
   try{
    const result=await request(pending,signal);if(signal.aborted)return;
-   if(result.ok)return result;
+   if(result.ok||result.status==='failed'||result.status==='expired')return result;
    failures=0;onStatus(result.message||'Confirming on Solana automatically…');
   }catch(e){
    if(signal.aborted)return;
